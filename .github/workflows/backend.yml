@@ -34,7 +34,7 @@ jobs:
       - run: uv run mypy
       - run: uv run pytest tests/unit -v
       - run: uv run pytest tests/integration -v -m integration
-        if: ${{ hashFiles('services/api/tests/integration/*.py') != '' }}
+        if: ${{ hashFiles('services/api/tests/integration/test_*.py') != '' }}
 
   scraper:
     runs-on: ubuntu-latest
