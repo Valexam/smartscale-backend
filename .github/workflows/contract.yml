@@ -1,0 +1,46 @@
+# .github/workflows/contract.yml
+name: contract
+
+on:
+  pull_request:
+    paths:
+      - "services/api/**"
+      - ".github/workflows/contract.yml"
+  push:
+    branches: [main]
+    paths:
+      - "services/api/**"
+
+jobs:
+  schemathesis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: services/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.5.x"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv venv
+      - run: uv pip install -e ".[dev]"
+
+      - name: Start API in background
+        run: |
+          nohup uv run python -m smartscale_api.main >/tmp/api.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:8000/v1/healthz; then exit 0; fi
+            sleep 1
+          done
+          echo "API never came up"; cat /tmp/api.log; exit 1
+
+      - name: Run schemathesis
+        run: |
+          uv run schemathesis run \
+            --checks all \
+            --hypothesis-max-examples 10 \
+            http://127.0.0.1:8000/v1/openapi.json
