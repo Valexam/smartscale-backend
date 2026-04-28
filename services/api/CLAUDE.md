@@ -6,8 +6,9 @@ FastAPI public service. Read first: `.claude/skills/backend-api/SKILL.md`.
 
 - `routes/` — thin FastAPI routers.
 - `domain/` — pure functions. No I/O. Fully unit-testable.
-- `repos/` — Postgres access (SQLAlchemy/asyncpg). Lands in MVP 3.
-- `schemas/` — Pydantic models for requests/responses + ORM mappers.
+- `repos/` — Postgres access (SQLAlchemy async).
+- `schemas/` — Pydantic models for requests/responses.
+- `auth.py`, `config.py`, `db.py`, `ids.py` — module-level helpers.
 - `app.py` — composition root: `create_app() -> FastAPI`.
 - `main.py` — uvicorn entry point.
 
@@ -33,7 +34,16 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy
 
 ## Migrations
 
-Alembic config arrives in MVP 3. Until then, no DB code lives in this service.
+Alembic config in `services/db/alembic.ini`. Migrations under
+`services/db/migrations/versions/`. Generate next revision with:
+
+```bash
+cd services/db
+DATABASE_URL=postgresql+psycopg://localhost/smartscale uv run --project ../api alembic revision --autogenerate -m "<change>"
+```
+
+Hand-edit the generated file as needed; SQLAlchemy autogen does not
+catch every check constraint or partial index.
 
 ## Auth (MVP)
 

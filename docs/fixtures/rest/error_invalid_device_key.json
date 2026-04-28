@@ -1,0 +1,7 @@
+{
+  "type": "https://smartscale.example/errors/invalid-device-key",
+  "title": "Unauthorized",
+  "status": 401,
+  "code": "INVALID_DEVICE_KEY",
+  "detail": "X-Device-Key does not match"
+}
