@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import AsyncIterator, Iterator
 
 import pytest
 import pytest_asyncio
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -43,7 +45,7 @@ def database_url(postgres_container: PostgresContainer) -> str:
 
 @pytest_asyncio.fixture(scope="session")
 async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
-    eng = create_async_engine(database_url, future=True)
+    eng = create_async_engine(database_url, future=True, pool_pre_ping=True)
     yield eng
     await eng.dispose()
 
@@ -67,9 +69,14 @@ async def schema(engine: AsyncEngine, database_url: str) -> AsyncIterator[None]:
 async def db_session(engine: AsyncEngine, schema: None) -> AsyncIterator[AsyncSession]:
     """Per-test AsyncSession with TRUNCATE of all data tables on teardown."""
     sm = async_sessionmaker(engine, expire_on_commit=False)
-    async with sm() as session:
+    session = sm()
+    try:
         yield session
-    async with engine.begin() as conn:
-        await conn.exec_driver_sql(
-            "TRUNCATE measurements, scrape_jobs, products RESTART IDENTITY CASCADE"
+    finally:
+        with contextlib.suppress(Exception):
+            await session.close()
+    async with engine.connect() as conn:
+        await conn.execute(
+            sa.text("TRUNCATE measurements, scrape_jobs, products RESTART IDENTITY CASCADE")
         )
+        await conn.commit()
