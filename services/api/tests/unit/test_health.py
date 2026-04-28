@@ -13,6 +13,7 @@ def test_healthz_returns_200() -> None:
 
 
 def test_unknown_route_is_404() -> None:
+    # Routes outside /v1/* are not gated by DeviceKeyMiddleware.
     client = TestClient(create_app())
-    response = client.get("/v1/does-not-exist")
+    response = client.get("/does-not-exist")
     assert response.status_code == 404

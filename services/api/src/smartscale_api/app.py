@@ -20,11 +20,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     _install_redacting_filter()
 
-    engine = make_engine(settings)
-    sm = make_sessionmaker(engine)
-
-    # Populate the deps module so that route Depends(get_session) resolves correctly.
-    _set_sessionmaker(sm)
+    if settings.database_url:
+        engine = make_engine(settings)
+        sm = make_sessionmaker(engine)
+        # Populate the deps module so that route Depends(get_session) resolves correctly.
+        _set_sessionmaker(sm)
 
     app = FastAPI(
         title="SmartScale API",
