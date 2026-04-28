@@ -43,6 +43,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
 
 def _install_redacting_filter() -> None:
-    flt = RedactingFilter()
-    for name in ("uvicorn", "uvicorn.access", "uvicorn.error", "fastapi"):
-        logging.getLogger(name).addFilter(flt)
+    """Attach RedactingFilter to root so every propagating log record is scrubbed."""
+    logging.getLogger().addFilter(RedactingFilter())
