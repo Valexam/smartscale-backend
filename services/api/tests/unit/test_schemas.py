@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -10,7 +11,7 @@ from pydantic import ValidationError
 from smartscale_api.schemas.measurement import MeasurementRequest
 
 
-def _valid_payload() -> dict[str, object]:
+def _valid_payload() -> dict[str, Any]:
     return {
         "observed_barcode": "7311070016010",
         "weight_grams": "142.7",
