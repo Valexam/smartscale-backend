@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -38,6 +39,10 @@ async def upsert(
     """
     existing = await get_by_barcode(session, barcode)
     created = existing is None
+    # Expire the cached instance so SQLAlchemy uses the RETURNING data, not the
+    # stale identity-map copy, when the on_conflict_do_update fires.
+    if existing is not None:
+        session.expire(existing)
 
     now = datetime.now(UTC)
     stmt = (
@@ -84,7 +89,7 @@ async def backfill_measurements(
     fat_g: Decimal,
 ) -> int:
     """Resolve unresolved measurements for this barcode. Returns rows updated."""
-    result = await session.execute(
+    raw: Any = await session.execute(
         text(
             """
             UPDATE measurements
@@ -105,4 +110,4 @@ async def backfill_measurements(
             "fat_g": fat_g,
         },
     )
-    return result.rowcount or 0
+    return int(raw.rowcount) if raw.rowcount else 0
