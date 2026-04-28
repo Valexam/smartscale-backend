@@ -1,0 +1,10 @@
+{
+  "type": "https://smartscale.example/errors/validation-error",
+  "title": "Unprocessable Entity",
+  "status": 422,
+  "code": "VALIDATION_ERROR",
+  "detail": "1 validation error",
+  "errors": [
+    {"loc": ["body", "weight_grams"], "msg": "Input should be greater than 0", "type": "greater_than"}
+  ]
+}

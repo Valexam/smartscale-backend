@@ -1,0 +1,28 @@
+{
+  "id": "mea_<dynamic>",
+  "observed_barcode": "7311070016010",
+  "product_barcode": "7311070016010",
+  "weight_grams": "142.7",
+  "measured_at": "2026-04-27T10:14:08Z",
+  "device_id": "scale-abc123",
+  "note": "half portion",
+  "product": {
+    "barcode": "7311070016010",
+    "name": "Havremjölk",
+    "brand": "Oatly",
+    "per_100g": {
+      "kcal": "46",
+      "protein_g": "1.0",
+      "carbs_g": "6.7",
+      "fat_g": "1.5",
+      "fiber_g": "0.8"
+    }
+  },
+  "computed": {
+    "kcal": "65.642",
+    "protein_g": "1.427",
+    "carbs_g": "9.5609",
+    "fat_g": "2.1405"
+  },
+  "server_received_at": "<dynamic>"
+}
