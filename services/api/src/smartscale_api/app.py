@@ -7,7 +7,7 @@ import logging
 from fastapi import FastAPI
 
 from smartscale_api import __version__
-from smartscale_api.auth import DeviceKeyMiddleware, RedactingFilter
+from smartscale_api.auth import DeviceKeyMiddleware, RedactingHandler
 from smartscale_api.config import Settings
 from smartscale_api.db import make_engine, make_sessionmaker
 from smartscale_api.routes import health, measurements
@@ -40,5 +40,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
 
 def _install_redacting_filter() -> None:
-    """Attach RedactingFilter to root so every propagating log record is scrubbed."""
-    logging.getLogger().addFilter(RedactingFilter())
+    """Attach a RedactingHandler to root so every propagating log record is scrubbed.
+
+    Using a Handler (not a Logger filter) ensures that propagated records from
+    child loggers are also scrubbed — Logger.filter() only runs on records
+    handled directly by that logger, not on records that propagate through it.
+    """
+    logging.getLogger().addHandler(RedactingHandler())

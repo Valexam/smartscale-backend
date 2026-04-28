@@ -33,6 +33,22 @@ class RedactingFilter(logging.Filter):
         return True
 
 
+class RedactingHandler(logging.Handler):
+    """A logging handler that mutates records in-place to scrub sensitive data.
+
+    Attach to the root logger so every propagating record is scrubbed before
+    any other handler (e.g. caplog, StreamHandler) can read the raw values.
+    This handler never emits output itself — it only runs the redaction filter.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.addFilter(RedactingFilter())
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """No-op: record mutation happens in the filter before emit is called."""
+
+
 def _redact(value: object) -> object:
     # Intentionally substring-based, defense-in-depth. May redact unrelated log
     # args containing "authorization"; tighten if false positives become noisy.
