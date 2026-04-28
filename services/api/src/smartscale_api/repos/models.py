@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import (
     CheckConstraint,
@@ -30,7 +31,7 @@ class Product(Base):
     brand: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'user'"))
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    raw_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    raw_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     kcal_per_100g: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
     protein_g_per_100g: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
     carbs_g_per_100g: Mapped[Decimal] = mapped_column(Numeric, nullable=False)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from collections.abc import AsyncIterator, Iterator
+from typing import cast
 
 import pytest
 import pytest_asyncio
@@ -16,13 +17,6 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from testcontainers.postgres import PostgresContainer
-
-
-@pytest.fixture(scope="session")
-def event_loop() -> Iterator[asyncio.AbstractEventLoop]:
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest.fixture(scope="session")
@@ -38,9 +32,8 @@ def postgres_container() -> Iterator[PostgresContainer]:
 
 @pytest.fixture(scope="session")
 def database_url(postgres_container: PostgresContainer) -> str:
-    return postgres_container.get_connection_url().replace(
-        "postgresql+psycopg2", "postgresql+asyncpg"
-    )
+    url = postgres_container.get_connection_url()
+    return cast(str, url).replace("postgresql+psycopg2", "postgresql+asyncpg")
 
 
 @pytest_asyncio.fixture(scope="session")

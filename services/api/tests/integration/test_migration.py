@@ -28,7 +28,7 @@ async def test_three_tables_exist(db_session: AsyncSession) -> None:
 async def test_unresolved_index_is_partial(db_session: AsyncSession) -> None:
     row = (
         await db_session.execute(
-            text("SELECT indexdef FROM pg_indexes " "WHERE indexname='measurements_unresolved_idx'")
+            text("SELECT indexdef FROM pg_indexes WHERE indexname='measurements_unresolved_idx'")
         )
     ).scalar_one()
     assert "WHERE" in row
