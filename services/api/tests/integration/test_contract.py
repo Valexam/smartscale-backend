@@ -35,7 +35,7 @@ async def test_measurement_known_contract(client: AsyncClient, db_session: Async
     assert strip_dynamic(resp.json()) == expected
 
 
-async def test_measurement_unknown_contract(client: AsyncClient) -> None:
+async def test_measurement_unknown_contract(client: AsyncClient, db_session: AsyncSession) -> None:
     req = load("measurement_unknown_request.json")
     expected = load("measurement_unknown_response_202.json")
     resp = await client.post("/v1/measurements", json=req)
@@ -43,7 +43,7 @@ async def test_measurement_unknown_contract(client: AsyncClient) -> None:
     assert strip_dynamic(resp.json()) == expected
 
 
-async def test_product_put_create_contract(client: AsyncClient) -> None:
+async def test_product_put_create_contract(client: AsyncClient, db_session: AsyncSession) -> None:
     req = load("product_put_request.json")
     expected = load("product_put_response_201.json")
     resp = await client.put("/v1/products/7311070016010", json=req)
