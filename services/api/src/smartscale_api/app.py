@@ -10,7 +10,6 @@ from smartscale_api import __version__
 from smartscale_api.auth import DeviceKeyMiddleware, RedactingFilter
 from smartscale_api.config import Settings
 from smartscale_api.db import make_engine, make_sessionmaker
-from smartscale_api.deps import _set_sessionmaker
 from smartscale_api.routes import health, measurements
 
 
@@ -20,12 +19,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     _install_redacting_filter()
 
-    if settings.database_url:
-        engine = make_engine(settings)
-        sm = make_sessionmaker(engine)
-        # Populate the deps module so that route Depends(get_session) resolves correctly.
-        _set_sessionmaker(sm)
-
     app = FastAPI(
         title="SmartScale API",
         version=__version__,
@@ -33,6 +26,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         docs_url="/v1/docs",
         redoc_url=None,
     )
+
+    if settings.database_url:
+        engine = make_engine(settings)
+        app.state.sessionmaker = make_sessionmaker(engine)
 
     app.include_router(health.router, prefix="/v1")
     app.include_router(measurements.router, prefix="/v1")
