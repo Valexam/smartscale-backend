@@ -48,3 +48,22 @@ async def test_health_does_not_require_key(app: FastAPI) -> None:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         resp = await c.get("/v1/healthz")
     assert resp.status_code == 200
+
+
+async def test_put_product_without_key_returns_401(app: FastAPI) -> None:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        resp = await c.put(
+            "/v1/products/7311070016010",
+            json={
+                "name": "Havremjölk",
+                "per_100g": {
+                    "kcal": "46",
+                    "protein_g": "1.0",
+                    "carbs_g": "6.7",
+                    "fat_g": "1.5",
+                },
+            },
+        )
+    assert resp.status_code == 401
+    assert resp.json()["code"] == "MISSING_DEVICE_KEY"
+    assert resp.headers["content-type"].startswith("application/problem+json")
