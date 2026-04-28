@@ -5,14 +5,16 @@ on:
   pull_request:
     paths:
       - "services/api/**"
+      - "docs/fixtures/rest/**"
       - ".github/workflows/contract.yml"
   push:
     branches: [main]
     paths:
       - "services/api/**"
+      - "docs/fixtures/rest/**"
 
 jobs:
-  schemathesis:
+  contract:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -29,18 +31,9 @@ jobs:
       - run: uv venv
       - run: uv pip install -e ".[dev]"
 
-      - name: Start API in background
-        run: |
-          nohup uv run python -m smartscale_api.main >/tmp/api.log 2>&1 &
-          for i in {1..30}; do
-            if curl -fsS http://127.0.0.1:8000/v1/healthz; then exit 0; fi
-            sleep 1
-          done
-          echo "API never came up"; cat /tmp/api.log; exit 1
-
-      - name: Run schemathesis
-        run: |
-          uv run schemathesis run \
-            --checks all \
-            --max-examples 10 \
-            http://127.0.0.1:8000/v1/openapi.json
+      # Contract + schema tests run against an in-process app via testcontainers
+      # Postgres + ASGI transport. This avoids the auth-vs-OpenAPI mismatch that
+      # would occur if `schemathesis run --checks all` hit a live server gated
+      # by X-Device-Key. The embedded test allowlists checks that conflict with
+      # the auth-first middleware.
+      - run: uv run pytest tests/integration -v -m "contract or schema"
