@@ -34,6 +34,8 @@ class RedactingFilter(logging.Filter):
 
 
 def _redact(value: object) -> object:
+    # Intentionally substring-based, defense-in-depth. May redact unrelated log
+    # args containing "authorization"; tighten if false positives become noisy.
     if not isinstance(value, str):
         return value
     lower = value.lower()
@@ -44,7 +46,11 @@ def _redact(value: object) -> object:
 
 
 class DeviceKeyMiddleware(BaseHTTPMiddleware):
-    """Gate /v1/* routes (except /v1/healthz) with X-Device-Key."""
+    """Gate /v1/* routes (except /v1/healthz) with X-Device-Key.
+
+    The expected key is captured at construction. Rotating ``DEVICE_KEY``
+    requires restarting the process.
+    """
 
     def __init__(self, app: object, settings: Settings) -> None:
         super().__init__(app)  # type: ignore[arg-type]

@@ -1,4 +1,10 @@
-"""Macro arithmetic. Pure; uses Decimal end-to-end."""
+"""Macro arithmetic. Pure; uses Decimal end-to-end.
+
+No rounding is applied here — output Decimals carry the full precision of
+``weight_grams * (per_100g / 100)``. Callers (the Pydantic response layer or
+the DB column) are responsible for quantizing to whatever precision they need
+at the I/O boundary.
+"""
 
 from __future__ import annotations
 
