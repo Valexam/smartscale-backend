@@ -10,6 +10,9 @@ from typing import cast
 import pytest
 import pytest_asyncio
 import sqlalchemy as sa
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -17,6 +20,9 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from testcontainers.postgres import PostgresContainer
+
+from smartscale_api.app import create_app
+from smartscale_api.config import Settings
 
 
 @pytest.fixture(scope="session")
@@ -73,3 +79,28 @@ async def db_session(engine: AsyncEngine, schema: None) -> AsyncIterator[AsyncSe
             sa.text("TRUNCATE measurements, scrape_jobs, products RESTART IDENTITY CASCADE")
         )
         await conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# HTTP-level fixtures (B10)
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def app(database_url: str, schema: None) -> FastAPI:
+    settings = Settings(
+        env="test",
+        device_key=SecretStr("test-key"),
+        database_url=database_url,
+    )
+    return create_app(settings=settings)
+
+
+@pytest_asyncio.fixture
+async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers={"x-device-key": "test-key"},
+    ) as c:
+        yield c
