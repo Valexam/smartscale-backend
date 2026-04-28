@@ -10,7 +10,7 @@ from smartscale_api import __version__
 from smartscale_api.auth import DeviceKeyMiddleware, RedactingHandler
 from smartscale_api.config import Settings
 from smartscale_api.db import make_engine, make_sessionmaker
-from smartscale_api.routes import health, measurements
+from smartscale_api.routes import health, measurements, products
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -33,6 +33,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(health.router, prefix="/v1")
     app.include_router(measurements.router, prefix="/v1")
+    app.include_router(products.router, prefix="/v1")
 
     app.add_middleware(DeviceKeyMiddleware, settings=settings)
 
