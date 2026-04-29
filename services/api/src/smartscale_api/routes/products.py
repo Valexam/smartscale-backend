@@ -53,6 +53,9 @@ async def put_product(
         carbs_g=body.per_100g.carbs_g,
         fat_g=body.per_100g.fat_g,
         fiber_g=body.per_100g.fiber_g,
+        source=body.source,
+        source_url=body.source_url,
+        raw_payload=body.raw_payload,
     )
     backfilled = await products_repo.backfill_measurements(
         session,

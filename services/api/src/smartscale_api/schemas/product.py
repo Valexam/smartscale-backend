@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
@@ -30,6 +30,9 @@ class ProductPutRequest(BaseModel):
     name: Annotated[str, StringConstraints(min_length=1, max_length=200)]
     brand: Annotated[str, StringConstraints(max_length=200)] | None = None
     per_100g: Per100gIn
+    source: Annotated[str, StringConstraints(min_length=1, max_length=100)] = "user"
+    source_url: Annotated[str, StringConstraints(max_length=2048)] | None = None
+    raw_payload: dict[str, Any] | None = None
 
 
 class ProductPutResponseProduct(BaseModel):
