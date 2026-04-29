@@ -30,6 +30,9 @@ async def upsert(
     carbs_g: Decimal,
     fat_g: Decimal,
     fiber_g: Decimal | None,
+    source: str = "user",
+    source_url: str | None = None,
+    raw_payload: dict[str, Any] | None = None,
 ) -> tuple[Product, bool]:
     """Insert or replace; return (product, created_flag).
 
@@ -51,7 +54,9 @@ async def upsert(
             barcode=barcode,
             name=name,
             brand=brand,
-            source="user",
+            source=source,
+            source_url=source_url,
+            raw_payload=raw_payload,
             kcal_per_100g=kcal,
             protein_g_per_100g=protein_g,
             carbs_g_per_100g=carbs_g,
@@ -65,6 +70,9 @@ async def upsert(
             set_={
                 "name": name,
                 "brand": brand,
+                "source": source,
+                "source_url": source_url,
+                "raw_payload": raw_payload,
                 "kcal_per_100g": kcal,
                 "protein_g_per_100g": protein_g,
                 "carbs_g_per_100g": carbs_g,

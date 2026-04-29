@@ -9,6 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from smartscale_api.schemas.measurement import MeasurementRequest
+from smartscale_api.schemas.product import ProductPutRequest
 
 
 def _valid_payload() -> dict[str, Any]:
@@ -60,3 +61,43 @@ def test_special_chars_in_barcode_rejected() -> None:
     p["observed_barcode"] = "7311 0700"
     with pytest.raises(ValidationError):
         MeasurementRequest(**p)
+
+
+def _valid_product_payload() -> dict[str, Any]:
+    return {
+        "name": "Nutella",
+        "brand": "Ferrero",
+        "per_100g": {"kcal": "539", "protein_g": "6.3", "carbs_g": "57.5", "fat_g": "30.9"},
+    }
+
+
+def test_product_source_defaults_to_user() -> None:
+    req = ProductPutRequest(**_valid_product_payload())
+    assert req.source == "user"
+    assert req.source_url is None
+    assert req.raw_payload is None
+
+
+def test_product_scraper_fields_accepted() -> None:
+    p = _valid_product_payload()
+    p["source"] = "openfoodfacts"
+    p["source_url"] = "https://world.openfoodfacts.org/api/v2/product/3017620422003.json"
+    p["raw_payload"] = {"status": 1, "product": {"product_name": "Nutella"}}
+    req = ProductPutRequest(**p)
+    assert req.source == "openfoodfacts"
+    assert req.source_url is not None
+    assert req.raw_payload == {"status": 1, "product": {"product_name": "Nutella"}}
+
+
+def test_product_empty_source_rejected() -> None:
+    p = _valid_product_payload()
+    p["source"] = ""
+    with pytest.raises(ValidationError):
+        ProductPutRequest(**p)
+
+
+def test_product_extra_field_rejected() -> None:
+    p = _valid_product_payload()
+    p["unexpected"] = "value"
+    with pytest.raises(ValidationError):
+        ProductPutRequest(**p)
