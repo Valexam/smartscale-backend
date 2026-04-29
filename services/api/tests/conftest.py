@@ -76,7 +76,10 @@ async def db_session(engine: AsyncEngine, schema: None) -> AsyncIterator[AsyncSe
             await session.close()
     async with engine.connect() as conn:
         await conn.execute(
-            sa.text("TRUNCATE measurements, scrape_jobs, products RESTART IDENTITY CASCADE")
+            sa.text(
+                "TRUNCATE measurements, scrape_jobs, pantry_items, "
+                "user_foods, products RESTART IDENTITY CASCADE"
+            )
         )
         await conn.commit()
 

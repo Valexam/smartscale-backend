@@ -5,9 +5,25 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from smartscale_api.repos.models import Measurement
+
+
+async def list_paginated(
+    session: AsyncSession,
+    *,
+    limit: int,
+    offset: int,
+    device_id: str | None = None,
+) -> list[Measurement]:
+    """List measurements ordered by measured_at desc, paginated, optionally filtered."""
+    stmt = select(Measurement)
+    if device_id:
+        stmt = stmt.where(Measurement.device_id == device_id)
+    stmt = stmt.order_by(Measurement.measured_at.desc(), Measurement.id).limit(limit).offset(offset)
+    return list((await session.execute(stmt)).scalars().all())
 
 
 async def insert(

@@ -6,9 +6,15 @@ from smartscale_api.repos import models
 from smartscale_api.repos.base import Base
 
 
-def test_three_tables_registered() -> None:
+def test_all_tables_registered() -> None:
     names = set(Base.metadata.tables)
-    assert names == {"products", "measurements", "scrape_jobs"}
+    assert names == {
+        "products",
+        "measurements",
+        "scrape_jobs",
+        "user_foods",
+        "pantry_items",
+    }
 
 
 def test_measurements_has_observed_and_product_barcode() -> None:

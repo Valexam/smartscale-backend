@@ -56,3 +56,9 @@ class MeasurementResponse(BaseModel):
     product: ProductOut | None
     computed: ComputedOut | None
     server_received_at: datetime
+
+
+class MeasurementListResponse(BaseModel):
+    items: list[MeasurementResponse]
+    limit: int
+    offset: int

@@ -13,9 +13,11 @@ from smartscale_api.repos import products as products_repo
 from smartscale_api.repos import scrape_jobs as scrape_jobs_repo
 from smartscale_api.schemas.product import (
     Per100gIn,
+    ProductGetResponse,
     ProductPutRequest,
     ProductPutResponse,
     ProductPutResponseProduct,
+    ProductRefreshResponse,
 )
 
 router = APIRouter(tags=["products"])
@@ -24,6 +26,40 @@ _BARCODE_RE = re.compile(r"^[0-9A-Za-z\-]{4,32}$")
 
 # Annotated alias avoids a bare Depends() call in the function signature (ruff B008).
 DbSession = Annotated[AsyncSession, Depends(get_session)]
+
+
+@router.get(
+    "/products/{barcode}",
+    response_model=ProductGetResponse,
+    responses={
+        200: {"description": "Product found."},
+        404: {"description": "Product not found."},
+        422: {"description": "Invalid barcode format."},
+    },
+)
+async def get_product(barcode: str, session: DbSession) -> ProductGetResponse:
+    if not _BARCODE_RE.match(barcode):
+        raise HTTPException(status_code=422, detail="invalid barcode in path")
+    product = await products_repo.get_by_barcode(session, barcode)
+    if product is None:
+        raise HTTPException(status_code=404, detail="product not found")
+    return ProductGetResponse(
+        barcode=product.barcode,
+        name=product.name,
+        brand=product.brand,
+        source=product.source,
+        source_url=product.source_url,
+        per_100g=Per100gIn(
+            kcal=product.kcal_per_100g,
+            protein_g=product.protein_g_per_100g,
+            carbs_g=product.carbs_g_per_100g,
+            fat_g=product.fat_g_per_100g,
+            fiber_g=product.fiber_g_per_100g,
+        ),
+        scraped_at=product.scraped_at,
+        refreshed_at=product.refreshed_at,
+        updated_at=product.updated_at,
+    )
 
 
 @router.put(
@@ -84,3 +120,20 @@ async def put_product(
         ),
         measurements_backfilled=backfilled,
     )
+
+
+@router.post(
+    "/products/{barcode}/refresh",
+    response_model=ProductRefreshResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        202: {"description": "Refresh queued. Scraper picks it up on next cycle."},
+        422: {"description": "Invalid barcode format."},
+    },
+)
+async def refresh_product(barcode: str, session: DbSession) -> ProductRefreshResponse:
+    if not _BARCODE_RE.match(barcode):
+        raise HTTPException(status_code=422, detail="invalid barcode in path")
+    await scrape_jobs_repo.requeue(session, barcode)
+    await session.commit()
+    return ProductRefreshResponse(barcode=barcode, status="queued")

@@ -127,3 +127,80 @@ class ScrapeJob(Base):
             name="scrape_jobs_status_enum",
         ),
     )
+
+
+class UserFood(Base):
+    __tablename__ = "user_foods"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    device_id: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    brand: Mapped[str | None] = mapped_column(Text, nullable=True)
+    kcal_per_100g: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    protein_g_per_100g: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    carbs_g_per_100g: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    fat_g_per_100g: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    fiber_g_per_100g: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
+    default_serving_g: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("kcal_per_100g >= 0", name="user_foods_kcal_nonneg"),
+        CheckConstraint("protein_g_per_100g >= 0", name="user_foods_protein_nonneg"),
+        CheckConstraint("carbs_g_per_100g >= 0", name="user_foods_carbs_nonneg"),
+        CheckConstraint("fat_g_per_100g >= 0", name="user_foods_fat_nonneg"),
+        CheckConstraint(
+            "(fiber_g_per_100g IS NULL) OR (fiber_g_per_100g >= 0)",
+            name="user_foods_fiber_nonneg",
+        ),
+        CheckConstraint(
+            "protein_g_per_100g + carbs_g_per_100g + fat_g_per_100g <= 100",
+            name="user_foods_macros_within_100g",
+        ),
+        CheckConstraint(
+            "char_length(name) BETWEEN 1 AND 200",
+            name="user_foods_name_length",
+        ),
+        Index("user_foods_device_id_idx", "device_id"),
+    )
+
+
+class PantryItem(Base):
+    __tablename__ = "pantry_items"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    device_id: Mapped[str] = mapped_column(Text, nullable=False)
+    product_barcode: Mapped[str | None] = mapped_column(
+        Text,
+        ForeignKey("products.barcode", ondelete="SET NULL"),
+        nullable=True,
+    )
+    user_food_id: Mapped[str | None] = mapped_column(
+        Text,
+        ForeignKey("user_foods.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    default_serving_g: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
+    added_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "num_nonnulls(product_barcode, user_food_id) = 1",
+            name="pantry_items_one_source",
+        ),
+        Index("pantry_items_device_archived_idx", "device_id", "archived_at"),
+        Index(
+            "pantry_items_device_last_used_idx",
+            "device_id",
+            text("last_used_at DESC NULLS LAST"),
+        ),
+    )

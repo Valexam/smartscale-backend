@@ -13,11 +13,16 @@ Living source of truth: the OpenAPI document FastAPI serves at `/openapi.json`. 
 | Method & path | Auth | First MVP |
 |---|---|---|
 | `POST /v1/measurements` | device-key | 3 |
-| `GET /v1/measurements?device_id=…&limit=…` | device-key | 4 |
-| `GET /v1/measurements/{id}` | device-key | 4 |
+| `GET /v1/measurements?device_id=…&limit=…&offset=…` | device-key | 4 |
+| `GET /v1/measurements/{id}` | device-key | 4 (deferred) |
 | `GET /v1/products/{barcode}` | device-key | 4 |
-| `POST /v1/products/{barcode}/refresh` | admin-key | scraper-MVP |
+| `PUT /v1/products/{barcode}` | device-key | 3 |
+| `POST /v1/products/{barcode}/refresh` | device-key | 4 |
 | `GET /v1/healthz` | public | 0 |
+
+`/v1/measurements/{id}` was scoped for MVP-4 but deferred — the paginated list
+endpoint covers the same use case for the phone gateway. Re-add if a single-row
+fetch is genuinely needed.
 
 ## `POST /v1/measurements` request
 
