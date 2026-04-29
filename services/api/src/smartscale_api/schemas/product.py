@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Any
 
@@ -22,6 +23,18 @@ class Per100gIn(BaseModel):
         if self.protein_g + self.carbs_g + self.fat_g > Decimal(100):
             raise ValueError("protein_g + carbs_g + fat_g must not exceed 100")
         return self
+
+
+class ProductGetResponse(BaseModel):
+    barcode: str
+    name: str
+    brand: str | None
+    source: str
+    source_url: str | None = None
+    per_100g: Per100gIn
+    scraped_at: datetime | None = None
+    refreshed_at: datetime | None = None
+    updated_at: datetime
 
 
 class ProductPutRequest(BaseModel):
