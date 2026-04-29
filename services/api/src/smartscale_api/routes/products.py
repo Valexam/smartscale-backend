@@ -17,6 +17,7 @@ from smartscale_api.schemas.product import (
     ProductPutRequest,
     ProductPutResponse,
     ProductPutResponseProduct,
+    ProductRefreshResponse,
 )
 
 router = APIRouter(tags=["products"])
@@ -119,3 +120,20 @@ async def put_product(
         ),
         measurements_backfilled=backfilled,
     )
+
+
+@router.post(
+    "/products/{barcode}/refresh",
+    response_model=ProductRefreshResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        202: {"description": "Refresh queued. Scraper picks it up on next cycle."},
+        422: {"description": "Invalid barcode format."},
+    },
+)
+async def refresh_product(barcode: str, session: DbSession) -> ProductRefreshResponse:
+    if not _BARCODE_RE.match(barcode):
+        raise HTTPException(status_code=422, detail="invalid barcode in path")
+    await scrape_jobs_repo.requeue(session, barcode)
+    await session.commit()
+    return ProductRefreshResponse(barcode=barcode, status="queued")

@@ -37,6 +37,11 @@ class ProductGetResponse(BaseModel):
     updated_at: datetime
 
 
+class ProductRefreshResponse(BaseModel):
+    barcode: str
+    status: str  # always "queued"
+
+
 class ProductPutRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
