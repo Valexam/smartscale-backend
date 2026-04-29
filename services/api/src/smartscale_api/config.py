@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     env: str = "dev"
     device_key: SecretStr = SecretStr("")
     database_url: str = ""
+    openai_api_key: SecretStr = SecretStr("")
+    whisper_model: str = "whisper-1"
 
     def assert_safe_to_start(self) -> None:
         """Refuse to boot with an empty device key outside dev/test."""
