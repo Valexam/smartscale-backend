@@ -7,7 +7,10 @@ the phone confirms then hits the existing /v1/pantry/{id}/log.
 
 from __future__ import annotations
 
+import logging
+import time
 from decimal import Decimal
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
@@ -25,6 +28,18 @@ router = APIRouter(tags=["voice"])
 
 DbSession = Annotated[AsyncSession, Depends(get_session)]
 
+# Dump every uploaded audio clip to disk for offline inspection. Cheap to
+# leave on in dev; would be feature-flagged for prod. Files land in /tmp
+# inside the api container — read with `kubectl cp` or via the Tilt UI.
+_AUDIO_DUMP_DIR = Path("/tmp/voice_dumps")
+_log = logging.getLogger(__name__)
+
+# Whisper auto-detects language across ~99 tongues; on noisy short clips it
+# regularly mis-classifies. Restrict to the languages this product actually
+# supports so we don't fuzzy-match Italian-detected gibberish against an
+# English/Swedish pantry.
+ALLOWED_LANGUAGES = frozenset({"en", "english", "sv", "swedish"})
+
 
 def _candidate_tuples(rows: list[PantryRow]) -> list[tuple[str, str, Decimal | None]]:
     """Project (id, name, default_serving_g) — name comes from product/user_food."""
@@ -38,6 +53,22 @@ def _candidate_tuples(rows: list[PantryRow]) -> list[tuple[str, str, Decimal | N
             continue
         out.append((r.item.id, name, r.item.default_serving_g))
     return out
+
+
+def _build_whisper_prompt(cands: list[tuple[str, str, Decimal | None]]) -> str:
+    """Bias Whisper toward this user's pantry item names.
+
+    Short noisy clips otherwise get mis-transcribed as unrelated phrases —
+    Whisper hallucinates confidently when it has no context. Listing the
+    actual food names anchors the model. The prompt is intentionally
+    language-neutral: pantry names may be Swedish (mjölk, kaffe), English
+    (banana, milk), or mixed, and Whisper auto-detects per-utterance.
+    Capped to keep the total prompt under Whisper's ~224-token budget.
+    """
+    if not cands:
+        return ""
+    names = [name for _, name, _ in cands][:50]
+    return ", ".join(names) + "."
 
 
 def _make_whisper_client(settings: Settings) -> WhisperClient:
@@ -73,20 +104,49 @@ async def voice_match(
     if not audio_bytes:
         raise HTTPException(status_code=400, detail="audio file is empty")
 
+    # Dump the raw upload so we can replay it offline and see what Whisper
+    # is actually receiving. Best-effort — never fail the request on this.
+    try:
+        _AUDIO_DUMP_DIR.mkdir(parents=True, exist_ok=True)
+        ext = (audio.filename or "audio").rsplit(".", 1)[-1] or "bin"
+        path = _AUDIO_DUMP_DIR / f"{int(time.time() * 1000)}_{device_id}.{ext}"
+        path.write_bytes(audio_bytes)
+        _log.info(
+            "voice.dump path=%s bytes=%d ct=%s", path, len(audio_bytes), audio.content_type
+        )
+    except Exception as e:  # pragma: no cover — diagnostic only
+        _log.warning("voice.dump failed: %s", e)
+
+    # Fetch pantry once. Used to (a) build a Whisper prompt that biases the
+    # transcription toward the user's actual food names, and (b) fuzzy-match
+    # the resulting transcript to a candidate.
+    rows = await pantry_repo.list_live(session, device_id=device_id, limit=200, offset=0)
+    cands = _candidate_tuples(rows)
+
     whisper = _make_whisper_client(settings)
     try:
         transcription = await whisper.transcribe(
             audio_bytes=audio_bytes,
             content_type=audio.content_type or "application/octet-stream",
             filename=audio.filename or "audio.m4a",
+            prompt=_build_whisper_prompt(cands),
         )
     except WhisperError as e:
         raise HTTPException(status_code=502, detail=f"transcription failed: {e}") from e
     finally:
         await whisper.aclose()
 
-    rows = await pantry_repo.list_live(session, device_id=device_id, limit=200, offset=0)
-    cands = _candidate_tuples(rows)
+    # Discard transcripts in unsupported languages. Whisper returns the
+    # detected language in `language` (full name in verbose_json, ISO-639-1
+    # in some response shapes). Compare lowercased.
+    detected = (transcription.language or "").lower()
+    if detected and detected not in ALLOWED_LANGUAGES:
+        return VoiceMatchResponse(
+            transcript=transcription.text,
+            language=transcription.language,
+            candidate=None,
+        )
+
     match = best_match(transcription.text, cands)
 
     candidate = (
