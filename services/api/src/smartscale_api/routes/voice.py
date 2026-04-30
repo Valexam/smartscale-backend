@@ -111,9 +111,7 @@ async def voice_match(
         ext = (audio.filename or "audio").rsplit(".", 1)[-1] or "bin"
         path = _AUDIO_DUMP_DIR / f"{int(time.time() * 1000)}_{device_id}.{ext}"
         path.write_bytes(audio_bytes)
-        _log.info(
-            "voice.dump path=%s bytes=%d ct=%s", path, len(audio_bytes), audio.content_type
-        )
+        _log.info("voice.dump path=%s bytes=%d ct=%s", path, len(audio_bytes), audio.content_type)
     except Exception as e:  # pragma: no cover — diagnostic only
         _log.warning("voice.dump failed: %s", e)
 
