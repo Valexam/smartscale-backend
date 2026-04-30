@@ -82,3 +82,45 @@ def best_match(
         weight_grams=weight,
         confidence=round(best_score / 100.0, 3),
     )
+
+
+def top_n_matches(
+    transcript: str,
+    candidates: list[tuple[str, str, Decimal | None]],
+    *,
+    n: int = 3,
+    threshold: int = _DEFAULT_THRESHOLD,
+    final_fallback_weight_g: Decimal = Decimal("100"),
+) -> list[Candidate]:
+    """All pantry items above threshold, descending by score, capped at n.
+
+    Ties (equal scores) preserve input order — Python's sorted is stable.
+    Empty list when nothing passes the threshold.
+    """
+    transcript = transcript.strip().lower()
+    if not transcript or not candidates:
+        return []
+
+    extracted = extract_weight_grams(transcript)
+
+    scored: list[tuple[float, str, str, Decimal | None]] = []
+    for pid, title, default_g in candidates:
+        score = fuzz.partial_ratio(transcript, title.lower())
+        if score >= threshold:
+            scored.append((score, pid, title, default_g))
+
+    # Stable sort: equal scores keep input order.
+    scored.sort(key=lambda t: t[0], reverse=True)
+
+    out: list[Candidate] = []
+    for score, pid, title, default_g in scored[:n]:
+        weight = extracted or default_g or final_fallback_weight_g
+        out.append(
+            Candidate(
+                pantry_item_id=pid,
+                name=title,
+                weight_grams=weight,
+                confidence=round(score / 100.0, 3),
+            )
+        )
+    return out
