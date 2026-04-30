@@ -41,10 +41,24 @@ class WhisperClient:
         self._owns_client = client is None
 
     async def transcribe(
-        self, *, audio_bytes: bytes, content_type: str, filename: str = "audio.m4a"
+        self,
+        *,
+        audio_bytes: bytes,
+        content_type: str,
+        filename: str = "audio.m4a",
+        prompt: str | None = None,
+        language: str | None = None,
     ) -> TranscriptionResult:
         files = {"file": (filename, audio_bytes, content_type)}
-        data = {"model": self._model, "response_format": "verbose_json"}
+        data: dict[str, str] = {
+            "model": self._model,
+            "response_format": "verbose_json",
+            "temperature": "0",
+        }
+        if prompt:
+            data["prompt"] = prompt
+        if language:
+            data["language"] = language
         headers = {"Authorization": f"Bearer {self._api_key}"}
         try:
             resp = await self._client.post(

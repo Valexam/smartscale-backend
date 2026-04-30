@@ -41,7 +41,13 @@ class _FakeWhisper:
         self._raise = raise_with
 
     async def transcribe(
-        self, *, audio_bytes: bytes, content_type: str, filename: str = "audio.m4a"
+        self,
+        *,
+        audio_bytes: bytes,
+        content_type: str,
+        filename: str = "audio.m4a",
+        prompt: str | None = None,
+        language: str | None = None,
     ) -> TranscriptionResult:
         if self._raise is not None:
             raise self._raise
