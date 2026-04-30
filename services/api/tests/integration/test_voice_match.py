@@ -83,14 +83,19 @@ def _patch_whisper(monkeypatch: pytest.MonkeyPatch, fake: _FakeWhisper) -> None:
     monkeypatch.setattr(voice_route, "_make_whisper_client", lambda settings: fake)
 
 
-async def _seed_pantry_banana(db_session: AsyncSession, client: AsyncClient) -> str:
-    """Add a Banana pantry entry. Returns the pantry_item_id."""
+async def _seed_pantry_custom(
+    client: AsyncClient,
+    *,
+    name: str,
+    default_serving_g: str = "100",
+) -> str:
+    """Add a custom-food pantry entry. Returns the pantry_item_id."""
     resp = await client.post(
         "/v1/pantry",
         json={
             "device_id": DEVICE,
             "custom": {
-                "name": "Banana",
+                "name": name,
                 "per_100g": {
                     "kcal": "89",
                     "protein_g": "1.1",
@@ -98,13 +103,27 @@ async def _seed_pantry_banana(db_session: AsyncSession, client: AsyncClient) -> 
                     "fat_g": "0.3",
                     "fiber_g": "2.6",
                 },
-                "default_serving_g": "118",
+                "default_serving_g": default_serving_g,
             },
         },
     )
     assert resp.status_code == 201
     pi_id: str = resp.json()["id"]
     return pi_id
+
+
+async def _seed_pantry_banana(db_session: AsyncSession, client: AsyncClient) -> str:
+    """Add a Banana pantry entry. Returns the pantry_item_id."""
+    return await _seed_pantry_custom(client, name="Banana", default_serving_g="118")
+
+
+async def _seed_pantry_milks(client: AsyncClient) -> list[str]:
+    """Add three milk variants. Returns their pantry_item_ids in seed order."""
+    return [
+        await _seed_pantry_custom(client, name="Milk 3%"),
+        await _seed_pantry_custom(client, name="Milk 0.5%"),
+        await _seed_pantry_custom(client, name="Milk 5%"),
+    ]
 
 
 async def test_returns_transcript_and_candidate(
@@ -122,11 +141,11 @@ async def test_returns_transcript_and_candidate(
     body = r.json()
     assert body["transcript"] == "log a banana"
     assert body["language"] == "en"
-    assert body["candidate"] is not None
-    assert body["candidate"]["pantry_item_id"] == pi_id
-    assert body["candidate"]["name"] == "Banana"
+    assert len(body["candidates"]) == 1
+    assert body["candidates"][0]["pantry_item_id"] == pi_id
+    assert body["candidates"][0]["name"] == "Banana"
     # No weight in transcript → falls back to default_serving_g
-    assert Decimal(body["candidate"]["weight_grams"]) == Decimal("118")
+    assert Decimal(body["candidates"][0]["weight_grams"]) == Decimal("118")
 
 
 async def test_picks_up_explicit_weight_in_transcript(
@@ -143,7 +162,9 @@ async def test_picks_up_explicit_weight_in_transcript(
         data={"device_id": DEVICE},
     )
     assert r.status_code == 200
-    assert Decimal(r.json()["candidate"]["weight_grams"]) == Decimal("200")
+    body = r.json()
+    assert len(body["candidates"]) == 1
+    assert Decimal(body["candidates"][0]["weight_grams"]) == Decimal("200")
 
 
 async def test_unmatched_returns_null_candidate(
@@ -161,8 +182,29 @@ async def test_unmatched_returns_null_candidate(
     )
     assert r.status_code == 200
     body = r.json()
-    assert body["candidate"] is None
+    assert body["candidates"] == []
     assert body["transcript"] == "zebra giraffe quasar"
+
+
+async def test_voice_match_returns_multiple_candidates(
+    voice_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """All three milk variants should come back when the transcript is just 'milk'."""
+    await _seed_pantry_milks(voice_client)
+    _patch_whisper(monkeypatch, _FakeWhisper(text="milk"))
+
+    r = await voice_client.post(
+        "/v1/voice/match",
+        files={"audio": ("clip.m4a", b"\x00" * 16, "audio/mp4")},
+        data={"device_id": DEVICE},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["candidates"]) == 3
+    names = [c["name"] for c in body["candidates"]]
+    assert set(names) == {"Milk 3%", "Milk 0.5%", "Milk 5%"}
 
 
 async def test_empty_audio_returns_400(

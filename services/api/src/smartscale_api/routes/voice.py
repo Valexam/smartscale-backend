@@ -1,8 +1,8 @@
 """POST /v1/voice/match — phone-side cloud voice pipeline (MVP-5b-1).
 
 Records audio (recorded by the phone), transcribes via Whisper, fuzzy-matches
-against the device's live pantry, returns a candidate. Does NOT log anything;
-the phone confirms then hits the existing /v1/pantry/{id}/log.
+against the device's live pantry, returns up to 3 candidates. Does NOT log
+anything; the phone confirms then hits the existing /v1/pantry/{id}/log.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from smartscale_api.config import Settings
 from smartscale_api.deps import get_session
-from smartscale_api.domain.voice_match import best_match
+from smartscale_api.domain.voice_match import top_n_matches
 from smartscale_api.repos import pantry as pantry_repo
 from smartscale_api.repos.pantry import PantryRow
 from smartscale_api.schemas.voice import VoiceCandidate, VoiceMatchResponse
@@ -84,7 +84,7 @@ def _make_whisper_client(settings: Settings) -> WhisperClient:
     response_model=VoiceMatchResponse,
     status_code=status.HTTP_200_OK,
     responses={
-        200: {"description": "Transcription + best pantry match (or null candidate)."},
+        200: {"description": "Transcription + top-3 pantry candidates (empty list if none match)."},
         400: {"description": "Audio missing or empty."},
         502: {"description": "Whisper upstream error."},
         503: {"description": "OPENAI_API_KEY not configured on the server."},
@@ -142,23 +142,21 @@ async def voice_match(
         return VoiceMatchResponse(
             transcript=transcription.text,
             language=transcription.language,
-            candidate=None,
+            candidates=[],
         )
 
-    match = best_match(transcription.text, cands)
-
-    candidate = (
+    matches = top_n_matches(transcription.text, cands, n=3)
+    candidates = [
         VoiceCandidate(
-            pantry_item_id=match.pantry_item_id,
-            name=match.name,
-            weight_grams=match.weight_grams,
-            confidence=match.confidence,
+            pantry_item_id=m.pantry_item_id,
+            name=m.name,
+            weight_grams=m.weight_grams,
+            confidence=m.confidence,
         )
-        if match is not None
-        else None
-    )
+        for m in matches
+    ]
     return VoiceMatchResponse(
         transcript=transcription.text,
         language=transcription.language,
-        candidate=candidate,
+        candidates=candidates,
     )
