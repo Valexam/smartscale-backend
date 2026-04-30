@@ -167,7 +167,7 @@ async def test_picks_up_explicit_weight_in_transcript(
     assert Decimal(body["candidates"][0]["weight_grams"]) == Decimal("200")
 
 
-async def test_unmatched_returns_null_candidate(
+async def test_unmatched_returns_empty_candidates(
     voice_client: AsyncClient,
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,

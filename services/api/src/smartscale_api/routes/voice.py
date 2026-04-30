@@ -117,7 +117,7 @@ async def voice_match(
 
     # Fetch pantry once. Used to (a) build a Whisper prompt that biases the
     # transcription toward the user's actual food names, and (b) fuzzy-match
-    # the resulting transcript to a candidate.
+    # the resulting transcript to candidates.
     rows = await pantry_repo.list_live(session, device_id=device_id, limit=200, offset=0)
     cands = _candidate_tuples(rows)
 
