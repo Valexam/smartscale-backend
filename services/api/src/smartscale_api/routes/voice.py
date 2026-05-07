@@ -40,6 +40,31 @@ _log = logging.getLogger(__name__)
 # English/Swedish pantry.
 ALLOWED_LANGUAGES = frozenset({"en", "english", "sv", "swedish"})
 
+# The amplitude-based wake detector fires mid-utterance: the first ~600 ms of
+# the recording contains "Hey Scale" (or similar), which Whisper transcribes
+# as a spurious word ("Basket", "Scale", etc.) prepended to the food name.
+# Trimming the WAV start discards the wake phrase before Whisper sees it.
+# WAV format: 44-byte RIFF header + PCM-16 mono at 8 kHz (16 bytes/ms).
+_WAKE_TRIM_MS = 600
+_WAV_SAMPLE_RATE = 8000
+_WAV_BYTES_PER_SAMPLE = 2  # PCM-16
+_WAV_HEADER_SIZE = 44
+
+
+def _trim_wav_start(wav: bytes, trim_ms: int) -> bytes:
+    """Return wav with the first trim_ms milliseconds of audio removed."""
+    import struct
+
+    trim_bytes = (trim_ms * _WAV_SAMPLE_RATE // 1000) * _WAV_BYTES_PER_SAMPLE
+    if len(wav) <= _WAV_HEADER_SIZE + trim_bytes:
+        return wav  # clip is shorter than the trim window; leave it intact
+
+    header = bytearray(wav[:_WAV_HEADER_SIZE])
+    audio = wav[_WAV_HEADER_SIZE + trim_bytes:]
+    struct.pack_into("<I", header, 4, 36 + len(audio))   # RIFF chunk size
+    struct.pack_into("<I", header, 40, len(audio))        # data chunk size
+    return bytes(header) + audio
+
 
 def _candidate_tuples(rows: list[PantryRow]) -> list[tuple[str, str, Decimal | None]]:
     """Project (id, name, default_serving_g) — name comes from product/user_food."""
@@ -121,10 +146,19 @@ async def voice_match(
     rows = await pantry_repo.list_live(session, device_id=device_id, limit=200, offset=0)
     cands = _candidate_tuples(rows)
 
+    # Trim the wake-word audio so Whisper doesn't transcribe "Hey Scale".
+    # Only applied to WAV uploads (device upload path); phone-mic uploads are
+    # already food-name-only since the user taps a button to start recording.
+    whisper_bytes = (
+        _trim_wav_start(audio_bytes, _WAKE_TRIM_MS)
+        if (audio.filename or "").endswith(".wav")
+        else audio_bytes
+    )
+
     whisper = _make_whisper_client(settings)
     try:
         transcription = await whisper.transcribe(
-            audio_bytes=audio_bytes,
+            audio_bytes=whisper_bytes,
             content_type=audio.content_type or "application/octet-stream",
             filename=audio.filename or "audio.m4a",
             prompt=_build_whisper_prompt(cands),
@@ -133,6 +167,27 @@ async def voice_match(
         raise HTTPException(status_code=502, detail=f"transcription failed: {e}") from e
     finally:
         await whisper.aclose()
+
+    _log.info(
+        "voice.transcript text=%r language=%r bytes=%d",
+        transcription.text,
+        transcription.language,
+        len(audio_bytes),
+    )
+
+    # Detect repetition hallucinations: Whisper fills near-silent audio with
+    # repeated words (e.g. "Hej. Hej. Hej..."). If the most common token
+    # makes up >50% of the transcript, treat it as garbage and return nothing.
+    words = transcription.text.split()
+    if words:
+        most_common_count = max(words.count(w) for w in set(words))
+        if most_common_count >= 3 and most_common_count / len(words) > 0.5:
+            _log.info("voice.hallucination detected — discarding transcript")
+            return VoiceMatchResponse(
+                transcript=transcription.text,
+                language=transcription.language,
+                candidates=[],
+            )
 
     # Discard transcripts in unsupported languages. Whisper returns the
     # detected language in `language` (full name in verbose_json, ISO-639-1
