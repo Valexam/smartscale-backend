@@ -25,6 +25,13 @@ _WEIGHT_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Whisper terminates utterances with punctuation (e.g. "Beigel." or "Vilket,
+# blåbär."). The trailing period shrinks partial_ratio scores enough to miss
+# the 70 threshold ("beigel." → 67 vs "bagel", "beigel" → 75). Strip all
+# non-word, non-space chars before matching; \w matches Unicode so å/ä/ö are
+# preserved.
+_PUNCT_RE = re.compile(r"[^\w\s]")
+
 
 @dataclass(frozen=True)
 class Candidate:
@@ -62,7 +69,7 @@ def best_match(
 
     Returns the best [Candidate] above [threshold], or None.
     """
-    transcript = transcript.strip().lower()
+    transcript = _PUNCT_RE.sub(" ", transcript).strip().lower()
     if not transcript or not candidates:
         return None
 
@@ -97,7 +104,7 @@ def top_n_matches(
     Ties (equal scores) preserve input order — Python's sorted is stable.
     Empty list when nothing passes the threshold.
     """
-    transcript = transcript.strip().lower()
+    transcript = _PUNCT_RE.sub(" ", transcript).strip().lower()
     if not transcript or not candidates:
         return []
 
