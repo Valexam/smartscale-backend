@@ -60,9 +60,9 @@ def _trim_wav_start(wav: bytes, trim_ms: int) -> bytes:
         return wav  # clip is shorter than the trim window; leave it intact
 
     header = bytearray(wav[:_WAV_HEADER_SIZE])
-    audio = wav[_WAV_HEADER_SIZE + trim_bytes:]
-    struct.pack_into("<I", header, 4, 36 + len(audio))   # RIFF chunk size
-    struct.pack_into("<I", header, 40, len(audio))        # data chunk size
+    audio = wav[_WAV_HEADER_SIZE + trim_bytes :]
+    struct.pack_into("<I", header, 4, 36 + len(audio))  # RIFF chunk size
+    struct.pack_into("<I", header, 40, len(audio))  # data chunk size
     return bytes(header) + audio
 
 
