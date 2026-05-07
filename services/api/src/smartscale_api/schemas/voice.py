@@ -21,4 +21,4 @@ class VoiceMatchResponse(BaseModel):
 
     transcript: str
     language: str | None = None
-    candidate: VoiceCandidate | None = None
+    candidates: list[VoiceCandidate] = []

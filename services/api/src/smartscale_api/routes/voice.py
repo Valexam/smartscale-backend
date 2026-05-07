@@ -1,8 +1,8 @@
 """POST /v1/voice/match — phone-side cloud voice pipeline (MVP-5b-1).
 
 Records audio (recorded by the phone), transcribes via Whisper, fuzzy-matches
-against the device's live pantry, returns a candidate. Does NOT log anything;
-the phone confirms then hits the existing /v1/pantry/{id}/log.
+against the device's live pantry, returns up to 3 candidates. Does NOT log
+anything; the phone confirms then hits the existing /v1/pantry/{id}/log.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from smartscale_api.config import Settings
 from smartscale_api.deps import get_session
-from smartscale_api.domain.voice_match import best_match
+from smartscale_api.domain.voice_match import top_n_matches
 from smartscale_api.repos import pantry as pantry_repo
 from smartscale_api.repos.pantry import PantryRow
 from smartscale_api.schemas.voice import VoiceCandidate, VoiceMatchResponse
@@ -39,6 +39,31 @@ _log = logging.getLogger(__name__)
 # supports so we don't fuzzy-match Italian-detected gibberish against an
 # English/Swedish pantry.
 ALLOWED_LANGUAGES = frozenset({"en", "english", "sv", "swedish"})
+
+# The amplitude-based wake detector fires mid-utterance: the first ~600 ms of
+# the recording contains "Hey Scale" (or similar), which Whisper transcribes
+# as a spurious word ("Basket", "Scale", etc.) prepended to the food name.
+# Trimming the WAV start discards the wake phrase before Whisper sees it.
+# WAV format: 44-byte RIFF header + PCM-16 mono at 8 kHz (16 bytes/ms).
+_WAKE_TRIM_MS = 600
+_WAV_SAMPLE_RATE = 8000
+_WAV_BYTES_PER_SAMPLE = 2  # PCM-16
+_WAV_HEADER_SIZE = 44
+
+
+def _trim_wav_start(wav: bytes, trim_ms: int) -> bytes:
+    """Return wav with the first trim_ms milliseconds of audio removed."""
+    import struct
+
+    trim_bytes = (trim_ms * _WAV_SAMPLE_RATE // 1000) * _WAV_BYTES_PER_SAMPLE
+    if len(wav) <= _WAV_HEADER_SIZE + trim_bytes:
+        return wav  # clip is shorter than the trim window; leave it intact
+
+    header = bytearray(wav[:_WAV_HEADER_SIZE])
+    audio = wav[_WAV_HEADER_SIZE + trim_bytes :]
+    struct.pack_into("<I", header, 4, 36 + len(audio))  # RIFF chunk size
+    struct.pack_into("<I", header, 40, len(audio))  # data chunk size
+    return bytes(header) + audio
 
 
 def _candidate_tuples(rows: list[PantryRow]) -> list[tuple[str, str, Decimal | None]]:
@@ -84,7 +109,7 @@ def _make_whisper_client(settings: Settings) -> WhisperClient:
     response_model=VoiceMatchResponse,
     status_code=status.HTTP_200_OK,
     responses={
-        200: {"description": "Transcription + best pantry match (or null candidate)."},
+        200: {"description": "Transcription + top-3 pantry candidates (empty list if none match)."},
         400: {"description": "Audio missing or empty."},
         502: {"description": "Whisper upstream error."},
         503: {"description": "OPENAI_API_KEY not configured on the server."},
@@ -117,14 +142,23 @@ async def voice_match(
 
     # Fetch pantry once. Used to (a) build a Whisper prompt that biases the
     # transcription toward the user's actual food names, and (b) fuzzy-match
-    # the resulting transcript to a candidate.
+    # the resulting transcript to candidates.
     rows = await pantry_repo.list_live(session, device_id=device_id, limit=200, offset=0)
     cands = _candidate_tuples(rows)
+
+    # Trim the wake-word audio so Whisper doesn't transcribe "Hey Scale".
+    # Only applied to WAV uploads (device upload path); phone-mic uploads are
+    # already food-name-only since the user taps a button to start recording.
+    whisper_bytes = (
+        _trim_wav_start(audio_bytes, _WAKE_TRIM_MS)
+        if (audio.filename or "").endswith(".wav")
+        else audio_bytes
+    )
 
     whisper = _make_whisper_client(settings)
     try:
         transcription = await whisper.transcribe(
-            audio_bytes=audio_bytes,
+            audio_bytes=whisper_bytes,
             content_type=audio.content_type or "application/octet-stream",
             filename=audio.filename or "audio.m4a",
             prompt=_build_whisper_prompt(cands),
@@ -134,6 +168,27 @@ async def voice_match(
     finally:
         await whisper.aclose()
 
+    _log.info(
+        "voice.transcript text=%r language=%r bytes=%d",
+        transcription.text,
+        transcription.language,
+        len(audio_bytes),
+    )
+
+    # Detect repetition hallucinations: Whisper fills near-silent audio with
+    # repeated words (e.g. "Hej. Hej. Hej..."). If the most common token
+    # makes up >50% of the transcript, treat it as garbage and return nothing.
+    words = transcription.text.split()
+    if words:
+        most_common_count = max(words.count(w) for w in set(words))
+        if most_common_count >= 3 and most_common_count / len(words) > 0.5:
+            _log.info("voice.hallucination detected — discarding transcript")
+            return VoiceMatchResponse(
+                transcript=transcription.text,
+                language=transcription.language,
+                candidates=[],
+            )
+
     # Discard transcripts in unsupported languages. Whisper returns the
     # detected language in `language` (full name in verbose_json, ISO-639-1
     # in some response shapes). Compare lowercased.
@@ -142,23 +197,21 @@ async def voice_match(
         return VoiceMatchResponse(
             transcript=transcription.text,
             language=transcription.language,
-            candidate=None,
+            candidates=[],
         )
 
-    match = best_match(transcription.text, cands)
-
-    candidate = (
+    matches = top_n_matches(transcription.text, cands, n=3)
+    candidates = [
         VoiceCandidate(
-            pantry_item_id=match.pantry_item_id,
-            name=match.name,
-            weight_grams=match.weight_grams,
-            confidence=match.confidence,
+            pantry_item_id=m.pantry_item_id,
+            name=m.name,
+            weight_grams=m.weight_grams,
+            confidence=m.confidence,
         )
-        if match is not None
-        else None
-    )
+        for m in matches
+    ]
     return VoiceMatchResponse(
         transcript=transcription.text,
         language=transcription.language,
-        candidate=candidate,
+        candidates=candidates,
     )

@@ -25,6 +25,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings.assert_safe_to_start()
 
     _install_redacting_filter()
+    _configure_app_logging()
 
     app = FastAPI(
         title="SmartScale API",
@@ -59,3 +60,28 @@ def _install_redacting_filter() -> None:
     handled directly by that logger, not on records that propagate through it.
     """
     logging.getLogger().addHandler(RedactingHandler())
+
+
+def _configure_app_logging() -> None:
+    """Give the smartscale_api namespace a real stderr handler at INFO level.
+
+    Uvicorn's dictConfig attaches its StreamHandler only to the 'uvicorn'
+    logger (propagate=False), leaving root with no real output handler.
+    Without this, _log.info() calls in routes are silently dropped because
+    the effective level inherited from root is WARNING.
+
+    propagate=True is intentional: root has no StreamHandler (uvicorn omits
+    it), so there is no duplicate output. Propagation is required so pytest's
+    caplog handler (installed on root) can capture records. The StreamHandler
+    carries its own RedactingFilter so stderr output is scrubbed before emit,
+    independent of the root-level RedactingHandler.
+    """
+    from smartscale_api.auth import RedactingFilter
+
+    logger = logging.getLogger("smartscale_api")
+    logger.setLevel(logging.INFO)
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(levelname)-8s %(name)s - %(message)s"))
+        handler.addFilter(RedactingFilter())
+        logger.addHandler(handler)

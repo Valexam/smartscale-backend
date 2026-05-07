@@ -6,7 +6,7 @@ from decimal import Decimal
 
 import pytest
 
-from smartscale_api.domain.voice_match import best_match, extract_weight_grams
+from smartscale_api.domain.voice_match import best_match, extract_weight_grams, top_n_matches
 
 # ---------- weight extraction ----------
 
@@ -119,3 +119,57 @@ def test_confidence_is_score_over_100() -> None:
     m = best_match("banana", _cands())
     assert m is not None
     assert 0.0 <= m.confidence <= 1.0
+
+
+# ---------- top-N matching ----------
+
+
+def _milks() -> list[tuple[str, str, Decimal | None]]:
+    return [
+        ("pi_milk_3", "Milk 3%", Decimal("100")),
+        ("pi_milk_05", "Milk 0.5%", Decimal("100")),
+        ("pi_milk_5", "Milk 5%", Decimal("100")),
+        ("pi_banana", "Banana", Decimal("118")),
+    ]
+
+
+def test_top_n_returns_all_above_threshold_descending() -> None:
+    cs = top_n_matches("milk", _milks(), n=3)
+    names = [c.name for c in cs]
+    # All three milks should pass; banana fails 70 threshold against "milk".
+    assert set(names) == {"Milk 3%", "Milk 0.5%", "Milk 5%"}
+    # Descending by score; ties OK as long as relative order is stable.
+    scores = [c.confidence for c in cs]
+    assert scores == sorted(scores, reverse=True)
+
+
+def test_top_n_caps_at_three() -> None:
+    cands: list[tuple[str, str, Decimal | None]] = [
+        (f"pi_{i}", f"Milk {i}%", Decimal("100")) for i in range(5)
+    ]
+    cs = top_n_matches("milk", cands, n=3)
+    assert len(cs) == 3
+
+
+def test_top_n_empty_when_nothing_passes_threshold() -> None:
+    cs = top_n_matches("xylophone", _milks(), n=3)
+    assert cs == []
+
+
+def test_top_n_single_match_returns_singleton_list() -> None:
+    cs = top_n_matches("banana", _milks(), n=3)
+    assert len(cs) == 1
+    assert cs[0].name == "Banana"
+
+
+def test_top_n_ties_break_by_input_order() -> None:
+    # Two perfectly matching items — first in input wins on tie.
+    cs = top_n_matches(
+        "milk",
+        [
+            ("pi_a", "Milk", Decimal("100")),
+            ("pi_b", "Milk", Decimal("100")),
+        ],
+        n=3,
+    )
+    assert [c.pantry_item_id for c in cs] == ["pi_a", "pi_b"]
