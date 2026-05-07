@@ -18,6 +18,7 @@ OPENAI_AUDIO_URL = "https://api.openai.com/v1/audio/transcriptions"
 class TranscriptionResult:
     text: str
     language: str | None
+    no_speech_prob: float = 0.0  # average across Whisper segments; 1.0 = no speech
 
 
 class WhisperError(RuntimeError):
@@ -71,9 +72,14 @@ class WhisperClient:
             raise WhisperError(f"Whisper returned {resp.status_code}: {resp.text[:500]}")
 
         body = resp.json()
+        segments = body.get("segments") or []
+        no_speech_prob = (
+            sum(s.get("no_speech_prob", 0.0) for s in segments) / len(segments) if segments else 0.0
+        )
         return TranscriptionResult(
             text=str(body.get("text", "")).strip(),
             language=body.get("language"),
+            no_speech_prob=no_speech_prob,
         )
 
     async def aclose(self) -> None:

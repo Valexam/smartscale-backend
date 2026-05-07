@@ -40,13 +40,12 @@ _log = logging.getLogger(__name__)
 # English/Swedish pantry.
 ALLOWED_LANGUAGES = frozenset({"en", "english", "sv", "swedish"})
 
-# The amplitude-based wake detector fires mid-utterance: the first ~600 ms of
-# the recording contains "Hey Scale" (or similar), which Whisper transcribes
-# as a spurious word ("Basket", "Scale", etc.) prepended to the food name.
-# Trimming the WAV start discards the wake phrase before Whisper sees it.
-# WAV format: 44-byte RIFF header + PCM-16 mono at 8 kHz (16 bytes/ms).
-_WAKE_TRIM_MS = 600
-_WAV_SAMPLE_RATE = 8000
+# The amplitude-based wake detector fires within ~5 ms of speech onset at
+# 16 kHz (min_active_samples=80). The user says the food name immediately after
+# wake, so only a short trim is needed to drop any leading transient.
+# WAV format: 44-byte RIFF header + PCM-16 mono at 16 kHz (32 bytes/ms).
+_WAKE_TRIM_MS = 200
+_WAV_SAMPLE_RATE = 16000
 _WAV_BYTES_PER_SAMPLE = 2  # PCM-16
 _WAV_HEADER_SIZE = 44
 
@@ -169,19 +168,36 @@ async def voice_match(
         await whisper.aclose()
 
     _log.info(
-        "voice.transcript text=%r language=%r bytes=%d",
+        "voice.transcript text=%r language=%r no_speech_prob=%.2f bytes=%d",
         transcription.text,
         transcription.language,
+        transcription.no_speech_prob,
         len(audio_bytes),
     )
 
+    # Discard only if no_speech_prob is high AND the transcript is long-ish.
+    # Whisper reports high no_speech_prob even on valid short clips ("banana"
+    # → 0.97), so a strict prob threshold throws out real transcriptions.
+    # Hallucinations on silence tend to produce many words (a sentence or
+    # repeated phrase). Combine length + prob to keep one-word matches.
+    if transcription.no_speech_prob > 0.85 and len(transcription.text) > 20:
+        _log.info(
+            "voice.no_speech prob=%.2f len=%d — discarding",
+            transcription.no_speech_prob,
+            len(transcription.text),
+        )
+        return VoiceMatchResponse(transcript="", language=None, candidates=[])
+
     # Detect repetition hallucinations: Whisper fills near-silent audio with
-    # repeated words (e.g. "Hej. Hej. Hej..."). If the most common token
-    # makes up >50% of the transcript, treat it as garbage and return nothing.
-    words = transcription.text.split()
-    if words:
-        most_common_count = max(words.count(w) for w in set(words))
-        if most_common_count >= 3 and most_common_count / len(words) > 0.5:
+    # repeated words. Normalize to lowercase + strip punctuation before
+    # comparing so "Bagel," == "bagel," == "BAGEL".
+    import re as _re
+
+    raw_words = transcription.text.split()
+    norm_words = [_re.sub(r"[^\w]", "", w).lower() for w in raw_words if _re.sub(r"[^\w]", "", w)]
+    if norm_words:
+        most_common_count = max(norm_words.count(w) for w in set(norm_words))
+        if most_common_count >= 3 and most_common_count / len(norm_words) > 0.4:
             _log.info("voice.hallucination detected — discarding transcript")
             return VoiceMatchResponse(
                 transcript=transcription.text,
