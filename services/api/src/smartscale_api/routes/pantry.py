@@ -210,6 +210,7 @@ async def log_from_pantry(
             },
         )
 
+    effective_note: str | None = body.note
     if row.product is not None:
         per_100g = Per100g(
             kcal=row.product.kcal_per_100g,
@@ -232,7 +233,6 @@ async def log_from_pantry(
             ),
         )
     else:
-        uf = cast("object", row.user_food)
         if row.user_food is None:  # pragma: no cover — CHECK guarantees one source
             raise RuntimeError(f"pantry item {row.item.id} has no source row")
         per_100g = Per100g(
@@ -244,7 +244,9 @@ async def log_from_pantry(
         observed_barcode = synth_observed_barcode_for_user_food(row.user_food.id)
         product_barcode = None
         product_out = None
-        _ = uf  # quieten unused-binding lint; user_food info isn't surfaced in response
+        # Persist the food name in note so the measurements list can display it
+        # without a join back to user_foods (product=None for user-food items).
+        effective_note = body.note or row.user_food.name
 
     computed = compute_macros(body.weight_grams, per_100g)
     measurement = await measurements_repo.insert(
@@ -259,7 +261,7 @@ async def log_from_pantry(
         computed_protein_g=computed.protein_g,
         computed_carbs_g=computed.carbs_g,
         computed_fat_g=computed.fat_g,
-        note=body.note,
+        note=effective_note,
     )
 
     await pantry_repo.bump_last_used_at(
