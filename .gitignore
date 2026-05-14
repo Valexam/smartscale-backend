@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.uv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Build / dist
+dist/
+build/
+
+# Secrets
+.env
+.env.local
+*.key
+*.pem
+
+# infra/prod local-dev runtime data
+infra/prod/postgres-data/
+infra/prod/caddy-data/
+infra/prod/caddy-config/

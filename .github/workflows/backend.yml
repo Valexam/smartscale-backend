@@ -38,27 +38,6 @@ jobs:
       - run: uv run pytest tests/integration -v -m integration
         if: ${{ hashFiles('services/api/tests/integration/test_*.py') != '' }}
 
-  scraper:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: services/scraper
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
-        with:
-          version: "0.5.x"
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: uv venv
-      - run: uv pip install -e ".[dev]"
-      - run: uv run ruff check .
-      - run: uv run ruff format --check .
-      - run: uv run mypy
-      - run: uv run pytest -v
-
   compose-smoke:
     name: prod compose stack smoke-test
     runs-on: ubuntu-latest

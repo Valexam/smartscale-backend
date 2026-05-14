@@ -1,8 +1,9 @@
 # infra/prod
 
 Production deployment for the SmartScale API. Single VM, docker compose,
-Caddy auto-TLS, Postgres on a Hetzner Volume. See [spec](../../docs/superpowers/specs/2026-05-14-mvp-infra-1-hetzner-design.md)
-for design and tradeoffs; this README is the runbook.
+Caddy auto-TLS, Postgres on a Hetzner Volume. See
+[`docs/DEPLOYMENT.md`](../../docs/DEPLOYMENT.md) for the one-page summary;
+this README is the full runbook.
 
 ## Stack
 

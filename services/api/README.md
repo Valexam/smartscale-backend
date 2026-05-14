@@ -1,3 +1,7 @@
 # services/api
 
-Public FastAPI service. See [`CLAUDE.md`](CLAUDE.md) for dev conventions and [`docs/API.md`](../../docs/API.md) for the contract.
+FastAPI public service for smartscale-backend.
+
+- Wire contract: [`docs/API.md`](../../docs/API.md) and [`openapi.json`](openapi.json)
+- Local dev loop: [`docs/DEVELOPMENT.md`](../../docs/DEVELOPMENT.md)
+- Deploy: [`docs/DEPLOYMENT.md`](../../docs/DEPLOYMENT.md)
