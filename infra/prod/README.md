@@ -9,8 +9,8 @@ for design and tradeoffs; this README is the runbook.
 | Service  | Image                                         | Role                                  |
 |----------|-----------------------------------------------|---------------------------------------|
 | postgres | postgres:16-alpine                            | DB. Data on `${POSTGRES_DATA_DIR}`.   |
-| migrate  | ghcr.io/Valexam/smartscale-api:`${API_IMAGE_TAG}` | One-shot `alembic upgrade head`.  |
-| api      | ghcr.io/Valexam/smartscale-api:`${API_IMAGE_TAG}` | FastAPI on :8000.                  |
+| migrate  | ghcr.io/valexam/smartscale-api:`${API_IMAGE_TAG}` | One-shot `alembic upgrade head`.  |
+| api      | ghcr.io/valexam/smartscale-api:`${API_IMAGE_TAG}` | FastAPI on :8000.                  |
 | caddy    | caddy:2-alpine                                | TLS termination + reverse proxy.      |
 
 Compose-level guarantees:

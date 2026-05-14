@@ -31,7 +31,7 @@ services:
     restart: unless-stopped
 
   migrate:
-    image: ghcr.io/Valexam/smartscale-api:${API_IMAGE_TAG:-latest}
+    image: ghcr.io/valexam/smartscale-api:${API_IMAGE_TAG:-latest}
     build:
       context: ../..
       dockerfile: services/api/Dockerfile
@@ -44,7 +44,7 @@ services:
     restart: "no"
 
   api:
-    image: ghcr.io/Valexam/smartscale-api:${API_IMAGE_TAG:-latest}
+    image: ghcr.io/valexam/smartscale-api:${API_IMAGE_TAG:-latest}
     build:
       context: ../..
       dockerfile: services/api/Dockerfile
