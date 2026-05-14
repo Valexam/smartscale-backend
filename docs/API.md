@@ -6,23 +6,22 @@ Living source of truth: the OpenAPI document FastAPI serves at `/openapi.json`. 
 - Auth: `X-Device-Key` (writes + product reads) or `X-Admin-Key` (admin) on all non-health endpoints.
 - Errors: RFC 7807 `application/problem+json`.
 - **Frozen-once-resolved macros:** see ADR 0007.
-- **No public product reads in MVP:** see ADR 0009.
+- **No public product reads:** see ADR 0009.
 
-## Endpoints (MVP scope)
+## Endpoints
 
-| Method & path | Auth | First MVP |
-|---|---|---|
-| `POST /v1/measurements` | device-key | 3 |
-| `GET /v1/measurements?device_id=…&limit=…&offset=…` | device-key | 4 |
-| `GET /v1/measurements/{id}` | device-key | 4 (deferred) |
-| `GET /v1/products/{barcode}` | device-key | 4 |
-| `PUT /v1/products/{barcode}` | device-key | 3 |
-| `POST /v1/products/{barcode}/refresh` | device-key | 4 |
-| `GET /v1/healthz` | public | 0 |
+| Method & path | Auth |
+|---|---|
+| `POST /v1/measurements` | device-key |
+| `GET /v1/measurements?device_id=…&limit=…&offset=…` | device-key |
+| `GET /v1/products/{barcode}` | device-key |
+| `PUT /v1/products/{barcode}` | device-key |
+| `POST /v1/products/{barcode}/refresh` | device-key |
+| `GET /v1/healthz` | public |
 
-`/v1/measurements/{id}` was scoped for MVP-4 but deferred — the paginated list
-endpoint covers the same use case for the phone gateway. Re-add if a single-row
-fetch is genuinely needed.
+`/v1/measurements/{id}` is intentionally not implemented — the paginated list
+endpoint covers the same use case. Re-add if a single-row fetch is genuinely
+needed.
 
 ## `POST /v1/measurements` request
 
@@ -66,7 +65,7 @@ fetch is genuinely needed.
 }
 ```
 
-## Postgres schema (created by Alembic in MVP 3)
+## Postgres schema
 
 - `products(barcode PK, name, brand, source, source_url, raw_payload jsonb, kcal_per_100g, protein_g_per_100g, carbs_g_per_100g, fat_g_per_100g, fiber_g_per_100g, scraped_at, refreshed_at)`
 - `measurements(id PK, device_id, observed_barcode, product_barcode FK→products NULL, weight_grams, measured_at, computed_kcal, computed_protein_g, computed_carbs_g, computed_fat_g, note, server_received_at)`
@@ -76,8 +75,7 @@ fetch is genuinely needed.
 
 ## PUT /v1/products/{barcode}
 
-User-submitted product data (MVP 3) and scraper-submitted product data (MVP 4)
-both write here. Body:
+User-submitted product data and scraper-submitted product data both write here. Body:
 
 ```json
 { "name": "Havremjölk", "brand": "Oatly",

@@ -27,7 +27,7 @@ names from any logged string. Startup refuses to boot when
 
 ## Alternatives considered
 
-- **No auth in MVP** — rejected: even a `tilt up` dev environment is
+- **No auth in MVP** — rejected: even a local dev environment is
   network-reachable from the host machine; one bit of gating is cheap.
 - **Per-device key in DB** — rejected: a meaningful chunk of F1 done
   early, with the wrong semantics (no rotation, no registration).

@@ -1,4 +1,4 @@
-"""POST /v1/voice/match — phone-side cloud voice pipeline (MVP-5b-1).
+"""POST /v1/voice/match — cloud voice pipeline endpoint.
 
 Records audio (recorded by the phone), transcribes via Whisper, fuzzy-matches
 against the device's live pantry, returns up to 3 candidates. Does NOT log
@@ -30,7 +30,7 @@ DbSession = Annotated[AsyncSession, Depends(get_session)]
 
 # Dump every uploaded audio clip to disk for offline inspection. Cheap to
 # leave on in dev; would be feature-flagged for prod. Files land in /tmp
-# inside the api container — read with `kubectl cp` or via the Tilt UI.
+# inside the api container — read with `docker compose exec api ls /tmp/voice_dumps`.
 _AUDIO_DUMP_DIR = Path("/tmp/voice_dumps")
 _log = logging.getLogger(__name__)
 

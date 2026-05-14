@@ -1,4 +1,4 @@
-"""add user_foods and pantry_items tables (MVP-5a)
+"""add user_foods and pantry_items tables
 
 Revision ID: 0003
 Revises: 0002

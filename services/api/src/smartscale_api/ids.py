@@ -30,7 +30,7 @@ def synth_observed_barcode_for_user_food(user_food_id: str) -> str:
     The collision risk is dominated by the 12-char suffix of a ULID, which is
     monotonic per millisecond per device — astronomically unlikely. A unique
     constraint on (device_id, observed_barcode) on `measurements` would be a
-    follow-up safety net but is not required for MVP-5a.
+    follow-up safety net.
     """
     if not user_food_id.startswith("uf_"):
         raise ValueError(f"expected uf_-prefixed user_food_id, got {user_food_id!r}")
