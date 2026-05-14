@@ -1,0 +1,13 @@
+# infra/prod/Caddyfile
+#
+# Auto-TLS via Let's Encrypt HTTP-01 challenge on first request.
+# Cert + account state persists in /data (mounted volume).
+
+{
+    email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+    reverse_proxy api:8000
+    encode gzip
+}

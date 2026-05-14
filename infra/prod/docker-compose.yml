@@ -1,0 +1,84 @@
+# infra/prod/docker-compose.yml
+#
+# Production stack for smartscale-api. One VM, four services.
+# Build context is the repo root because services/api/Dockerfile bundles
+# services/db/migrations.
+#
+# Operate from this directory:
+#   cp .env.example .env  && edit .env
+#   docker compose pull              # prod: pull from GHCR
+#   docker compose build api         # local: rebuild from source
+#   docker compose up -d --wait      # waits for healthchecks
+#
+# See README.md for first-boot bootstrap on a fresh VM.
+
+name: smartscale-prod
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: smartscale
+      POSTGRES_DB: smartscale
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+    volumes:
+      - ${POSTGRES_DATA_DIR:-./postgres-data}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smartscale -d smartscale"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  migrate:
+    image: ghcr.io/Valexam/smartscale-api:${API_IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: services/api/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://smartscale:${POSTGRES_PASSWORD:?}@postgres:5432/smartscale
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
+  api:
+    image: ghcr.io/Valexam/smartscale-api:${API_IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: services/api/Dockerfile
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      ENV: prod
+      DATABASE_URL: postgresql+asyncpg://smartscale:${POSTGRES_PASSWORD:?}@postgres:5432/smartscale
+      DEVICE_KEY: ${DEVICE_KEY:?DEVICE_KEY must be set in .env}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY must be set in .env}
+      WHISPER_MODEL: ${WHISPER_MODEL:-whisper-1}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/healthz', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN must be set in .env (e.g. api.example.tld)}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL must be set in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${CADDY_DATA_DIR:-./caddy-data}:/data
+      - ./caddy-config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
