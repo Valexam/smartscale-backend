@@ -5,11 +5,13 @@ on:
   pull_request:
     paths:
       - "services/**"
+      - "infra/prod/**"
       - ".github/workflows/backend.yml"
   push:
     branches: [main]
     paths:
       - "services/**"
+      - "infra/prod/**"
       - ".github/workflows/backend.yml"
 
 jobs:
@@ -56,3 +58,47 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy
       - run: uv run pytest -v
+
+  compose-smoke:
+    name: prod compose stack smoke-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: api
+    defaults:
+      run:
+        working-directory: infra/prod
+    env:
+      # Throwaway values — sufficient to satisfy compose's ${VAR:?} checks
+      # and DeviceKeyMiddleware. Healthcheck only hits /v1/healthz which
+      # is auth-exempt.
+      API_IMAGE_TAG: ci-${{ github.sha }}
+      POSTGRES_PASSWORD: ci-test-password
+      DEVICE_KEY: ci-test-device-key
+      OPENAI_API_KEY: sk-ci-not-used-by-healthz
+      DOMAIN: ci.example.invalid
+      ACME_EMAIL: ci@example.invalid
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build api image (uses compose build:; tagged as $API_IMAGE_TAG)
+        run: docker compose build api
+
+      - name: Bring up postgres + migrate + api (caddy excluded — no TLS in CI)
+        run: docker compose up -d --wait postgres migrate api
+
+      - name: Hit /v1/healthz from inside the api container
+        run: |
+          docker compose exec -T api python -c "
+          import urllib.request, sys
+          r = urllib.request.urlopen('http://localhost:8000/v1/healthz', timeout=2)
+          print('status:', r.status)
+          sys.exit(0 if r.status == 200 else 1)
+          "
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail 200
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v --remove-orphans
