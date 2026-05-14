@@ -1,0 +1,64 @@
+# .github/workflows/deploy.yml
+#
+# SSH-based deploy to the production Hetzner VM. Triggers after every
+# successful `backend` workflow run on main. Gated by the SSH_HOST
+# secret — if it's unset (i.e. the VM isn't provisioned yet), the
+# deploy step is skipped and the job still reports green.
+#
+# Required repository secrets once the VM exists:
+#   SSH_HOST          — VM's public hostname or IP (e.g. api.example.tld)
+#   SSH_USER          — deploy user on the VM (e.g. deploy)
+#   SSH_PRIVATE_KEY   — ed25519 private key, full PEM
+#   GHCR_USER         — GitHub username that owns the PAT
+#   GHCR_TOKEN        — PAT with `read:packages`
+#
+# See infra/prod/README.md for VM bootstrap.
+
+name: deploy
+
+on:
+  workflow_run:
+    workflows: [backend]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    name: ssh deploy to prod
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Check if deploy secrets are configured
+        id: gate
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          if [ -z "${SSH_HOST}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::SSH_HOST secret not set — VM not provisioned yet, skipping deploy."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: SSH into VM and roll the stack
+        if: steps.gate.outputs.configured == 'true'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: GHCR_USER,GHCR_TOKEN,DEPLOY_SHA
+          script: |
+            set -euo pipefail
+            cd /opt/smartscale
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
+            sed -i "s|^API_IMAGE_TAG=.*|API_IMAGE_TAG=${DEPLOY_SHA}|" .env
+            docker compose pull api migrate
+            docker compose up -d --wait
+            docker image prune -f
+            docker logout ghcr.io
+        env:
+          GHCR_USER: ${{ secrets.GHCR_USER }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
