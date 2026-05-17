@@ -9,8 +9,8 @@
 #   SSH_HOST          — VM's public hostname or IP (e.g. api.example.tld)
 #   SSH_USER          — deploy user on the VM (e.g. deploy)
 #   SSH_PRIVATE_KEY   — ed25519 private key, full PEM
-#   GHCR_USER         — GitHub username that owns the PAT
-#   GHCR_TOKEN        — PAT with `read:packages`
+#
+# The GHCR image is public, so no registry auth is needed on the VM.
 #
 # See infra/prod/README.md for VM bootstrap.
 
@@ -48,17 +48,13 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: GHCR_USER,GHCR_TOKEN,DEPLOY_SHA
+          envs: DEPLOY_SHA
           script: |
             set -euo pipefail
             cd /opt/smartscale
-            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
             sed -i "s|^API_IMAGE_TAG=.*|API_IMAGE_TAG=${DEPLOY_SHA}|" .env
             docker compose pull api migrate
             docker compose up -d --wait
             docker image prune -f
-            docker logout ghcr.io
         env:
-          GHCR_USER: ${{ secrets.GHCR_USER }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
