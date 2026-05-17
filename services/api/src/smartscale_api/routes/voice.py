@@ -8,6 +8,7 @@ anything; the phone confirms then hits the existing /v1/pantry/{id}/log.
 from __future__ import annotations
 
 import logging
+import random
 import time
 from decimal import Decimal
 from pathlib import Path
@@ -65,11 +66,16 @@ ALLOWED_LANGUAGES = frozenset(
     }
 )
 
-# The amplitude-based wake detector fires within ~5 ms of speech onset at
-# 16 kHz (min_active_samples=80). The user says the food name immediately after
-# wake, so only a short trim is needed to drop any leading transient.
+# The amplitude-based wake detector fires within ~5 ms of speech onset, so
+# the recording starts during the wake-word itself ("Hey scale ..."). Live
+# transcripts showed leading garbage ("bagel", "begge", "miguel") that's
+# clearly Whisper mis-hearing the tail of "scale" before the food name.
+# Bumping trim to 400 ms removes most of the wake-word phrase. If users
+# speak the food name with no pause after "scale", this may eat the first
+# phoneme — fuzzy match is robust to that, but worth A/B'ing if matches
+# regress.
 # WAV format: 44-byte RIFF header + PCM-16 mono at 16 kHz (32 bytes/ms).
-_WAKE_TRIM_MS = 200
+_WAKE_TRIM_MS = 400
 _WAV_SAMPLE_RATE = 16000
 _WAV_BYTES_PER_SAMPLE = 2  # PCM-16
 _WAV_HEADER_SIZE = 44
@@ -120,10 +126,19 @@ def _build_whisper_prompt(cands: list[tuple[str, str, Decimal | None]]) -> str:
     because it was in the prompt. The shorter list still anchors common
     brand names without overpowering speech. No trailing period either —
     a closed sentence in the prompt encourages comma-listing in output.
+
+    Random sample of up to _MAX_PROMPT_NAMES from the pantry. Sampling per
+    request prevents a deterministic hallucination pattern on silent clips:
+    a fixed ordering means the same first name gets regurgitated every
+    time (we observed "bagel" x50 because Bagel was first alphabetically).
+    Random sampling makes hallucinations vary, and the repetition filter
+    catches them either way.
     """
     if not cands:
         return ""
-    names = [name for _, name, _ in cands][:_MAX_PROMPT_NAMES]
+    pool = [name for _, name, _ in cands]
+    k = min(_MAX_PROMPT_NAMES, len(pool))
+    names = random.sample(pool, k=k)
     return ", ".join(names)
 
 
