@@ -35,16 +35,35 @@ _AUDIO_DUMP_DIR = Path("/tmp/voice_dumps")
 _log = logging.getLogger(__name__)
 
 # Whisper auto-detects language across ~99 tongues; on noisy short clips it
-# regularly mis-classifies. Force Swedish at request time (the actual user
-# base for now) instead of leaving detection on — observed cases included
-# nynorsk and hawaiian for clearly-Swedish audio. Future per-user language
-# preference is F1's problem.
-WHISPER_LANGUAGE = "sv"
-
-# Even with forced language, we keep an allowlist as a backstop: if Whisper
-# somehow returns a different language in the response (it shouldn't with
-# `language="sv"`, but verify), we still gate.
-ALLOWED_LANGUAGES = frozenset({"sv", "swedish"})
+# regularly mis-classifies. We let it auto-detect (so users can have a mix
+# of Swedish and English pantry items) but gate the response on a tight
+# allowlist:
+#
+#   - sv / swedish, en / english  — primary expected languages.
+#   - nb, nn, da and their full-name forms — Scandinavian neighbours. Whisper
+#     periodically picks these for short Swedish clips ("Bagel.", "Begge.")
+#     but the transcribed *text* is usually correct Swedish words; the
+#     fuzzy-match against a Swedish pantry still works. Letting these through
+#     fixes the "voice doesn't return any match" UX from the initial deploy.
+#
+# Anything else (hawaiian, italian, etc.) drops to candidates: [] — almost
+# always a hallucination on near-silent audio.
+ALLOWED_LANGUAGES = frozenset(
+    {
+        "en",
+        "english",
+        "sv",
+        "swedish",
+        "nb",
+        "norwegian",
+        "norwegian bokmål",
+        "nn",
+        "nynorsk",
+        "norwegian nynorsk",
+        "da",
+        "danish",
+    }
+)
 
 # The amplitude-based wake detector fires within ~5 ms of speech onset at
 # 16 kHz (min_active_samples=80). The user says the food name immediately after
@@ -174,7 +193,6 @@ async def voice_match(
             content_type=audio.content_type or "application/octet-stream",
             filename=audio.filename or "audio.m4a",
             prompt=_build_whisper_prompt(cands),
-            language=WHISPER_LANGUAGE,
         )
     except WhisperError as e:
         raise HTTPException(status_code=502, detail=f"transcription failed: {e}") from e
