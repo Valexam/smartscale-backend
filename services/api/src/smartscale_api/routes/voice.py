@@ -35,10 +35,16 @@ _AUDIO_DUMP_DIR = Path("/tmp/voice_dumps")
 _log = logging.getLogger(__name__)
 
 # Whisper auto-detects language across ~99 tongues; on noisy short clips it
-# regularly mis-classifies. Restrict to the languages this product actually
-# supports so we don't fuzzy-match Italian-detected gibberish against an
-# English/Swedish pantry.
-ALLOWED_LANGUAGES = frozenset({"en", "english", "sv", "swedish"})
+# regularly mis-classifies. Force Swedish at request time (the actual user
+# base for now) instead of leaving detection on — observed cases included
+# nynorsk and hawaiian for clearly-Swedish audio. Future per-user language
+# preference is F1's problem.
+WHISPER_LANGUAGE = "sv"
+
+# Even with forced language, we keep an allowlist as a backstop: if Whisper
+# somehow returns a different language in the response (it shouldn't with
+# `language="sv"`, but verify), we still gate.
+ALLOWED_LANGUAGES = frozenset({"sv", "swedish"})
 
 # The amplitude-based wake detector fires within ~5 ms of speech onset at
 # 16 kHz (min_active_samples=80). The user says the food name immediately after
@@ -79,20 +85,27 @@ def _candidate_tuples(rows: list[PantryRow]) -> list[tuple[str, str, Decimal | N
     return out
 
 
+_MAX_PROMPT_NAMES = 10
+
+
 def _build_whisper_prompt(cands: list[tuple[str, str, Decimal | None]]) -> str:
     """Bias Whisper toward this user's pantry item names.
 
     Short noisy clips otherwise get mis-transcribed as unrelated phrases —
     Whisper hallucinates confidently when it has no context. Listing the
-    actual food names anchors the model. The prompt is intentionally
-    language-neutral: pantry names may be Swedish (mjölk, kaffe), English
-    (banana, milk), or mixed, and Whisper auto-detects per-utterance.
-    Capped to keep the total prompt under Whisper's ~224-token budget.
+    actual food names anchors the model.
+
+    Capped at 10 names (was 50). Larger prompts caused the model to leak
+    listed names into outputs on ambiguous audio — e.g. clips that didn't
+    say "Champs Isbergssallad" came back transcribed as exactly that
+    because it was in the prompt. The shorter list still anchors common
+    brand names without overpowering speech. No trailing period either —
+    a closed sentence in the prompt encourages comma-listing in output.
     """
     if not cands:
         return ""
-    names = [name for _, name, _ in cands][:50]
-    return ", ".join(names) + "."
+    names = [name for _, name, _ in cands][:_MAX_PROMPT_NAMES]
+    return ", ".join(names)
 
 
 def _make_whisper_client(settings: Settings) -> WhisperClient:
@@ -161,6 +174,7 @@ async def voice_match(
             content_type=audio.content_type or "application/octet-stream",
             filename=audio.filename or "audio.m4a",
             prompt=_build_whisper_prompt(cands),
+            language=WHISPER_LANGUAGE,
         )
     except WhisperError as e:
         raise HTTPException(status_code=502, detail=f"transcription failed: {e}") from e
@@ -191,14 +205,29 @@ async def voice_match(
     # Detect repetition hallucinations: Whisper fills near-silent audio with
     # repeated words. Normalize to lowercase + strip punctuation before
     # comparing so "Bagel," == "bagel," == "BAGEL".
+    #
+    # Wake-trimmed utterances are typically 1-4 words ("blåbär", "havremjölk").
+    # A genuine user doesn't say two unrelated food names in one breath. So:
+    # - count >= 3 anywhere → hallucination (e.g. "blåbär, blåbär, blåbär")
+    # - count >= 2 in a short utterance (≤6 tokens) where the repeat fills
+    #   >= 40% of the words → hallucination (e.g. "blåbär, blåbär, champs
+    #   isbergssallad" where blåbär x2 is suspiciously regurgitating bias).
     import re as _re
 
     raw_words = transcription.text.split()
     norm_words = [_re.sub(r"[^\w]", "", w).lower() for w in raw_words if _re.sub(r"[^\w]", "", w)]
     if norm_words:
         most_common_count = max(norm_words.count(w) for w in set(norm_words))
-        if most_common_count >= 3 and most_common_count / len(norm_words) > 0.4:
-            _log.info("voice.hallucination detected — discarding transcript")
+        ratio = most_common_count / len(norm_words)
+        long_repeat = most_common_count >= 3 and ratio > 0.4
+        short_repeat = most_common_count >= 2 and ratio > 0.4 and len(norm_words) <= 6
+        if long_repeat or short_repeat:
+            _log.info(
+                "voice.hallucination detected (count=%d ratio=%.2f len=%d) — discarding transcript",
+                most_common_count,
+                ratio,
+                len(norm_words),
+            )
             return VoiceMatchResponse(
                 transcript=transcription.text,
                 language=transcription.language,
