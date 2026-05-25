@@ -62,15 +62,19 @@ def _redact(value: object) -> object:
 
 
 class DeviceKeyMiddleware(BaseHTTPMiddleware):
-    """Gate /v1/* routes (except /v1/healthz) with X-Device-Key.
+    """Gate /v1/* routes (except /v1/healthz) with X-Device-Key or X-Admin-Key.
 
-    The expected key is captured at construction. Rotating ``DEVICE_KEY``
+    A request is authorized if it presents a correct ``X-Device-Key`` *or* a
+    correct ``X-Admin-Key``. The admin path is only active when ``ADMIN_KEY`` is
+    configured (non-empty); it exists for non-device clients such as the scraper
+    worker. Both expected keys are captured at construction — rotating either
     requires restarting the process.
     """
 
     def __init__(self, app: object, settings: Settings) -> None:
         super().__init__(app)  # type: ignore[arg-type]
-        self._expected = settings.device_key.get_secret_value().encode()
+        self._expected_device = settings.device_key.get_secret_value().encode()
+        self._expected_admin = settings.admin_key.get_secret_value().encode()
 
     async def dispatch(
         self,
@@ -81,9 +85,21 @@ class DeviceKeyMiddleware(BaseHTTPMiddleware):
         if path == "/v1/healthz" or not path.startswith("/v1/"):
             return await call_next(request)
 
-        provided = request.headers.get("x-device-key")
-        if provided is None:
-            return problem_response(401, "MISSING_DEVICE_KEY", "X-Device-Key header is required")
-        if not hmac.compare_digest(provided.encode(), self._expected):
-            return problem_response(401, "INVALID_DEVICE_KEY", "X-Device-Key does not match")
-        return await call_next(request)
+        device_key = request.headers.get("x-device-key")
+        admin_key = request.headers.get("x-admin-key")
+        if device_key is None and admin_key is None:
+            return problem_response(
+                401, "MISSING_DEVICE_KEY", "X-Device-Key or X-Admin-Key header is required"
+            )
+        if device_key is not None and hmac.compare_digest(
+            device_key.encode(), self._expected_device
+        ):
+            return await call_next(request)
+        # Admin path is disabled unless ADMIN_KEY is configured (non-empty).
+        if (
+            admin_key is not None
+            and self._expected_admin
+            and hmac.compare_digest(admin_key.encode(), self._expected_admin)
+        ):
+            return await call_next(request)
+        return problem_response(401, "INVALID_DEVICE_KEY", "X-Device-Key does not match")

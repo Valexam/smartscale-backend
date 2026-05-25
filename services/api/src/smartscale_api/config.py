@@ -18,6 +18,11 @@ class Settings(BaseSettings):
 
     env: str = "dev"
     device_key: SecretStr = SecretStr("")
+    # Optional second credential. When non-empty, requests may authenticate with
+    # `X-Admin-Key: <admin_key>` as an alternative to `X-Device-Key`. Used by the
+    # scraper worker (which has no device identity) to PUT product data. Empty
+    # (the default) disables the admin path entirely.
+    admin_key: SecretStr = SecretStr("")
     database_url: str = ""
     openai_api_key: SecretStr = SecretStr("")
     whisper_model: str = "whisper-1"
