@@ -26,7 +26,11 @@ dev = [
     "ruff>=0.7",
     "mypy>=1.13",
     "testcontainers[postgres]>=4.8",
-    "schemathesis>=3.36",
+    # Cap below 4.17: 4.20 made schemathesis.Case generic, which trips
+    # mypy --strict (type-arg) in test_schemathesis.py. The floor was also
+    # stale — the test uses the 4.x API. Revisit when the Case[...] generics
+    # are adopted across the suite.
+    "schemathesis>=4.16,<4.17",
 ]
 
 [build-system]
