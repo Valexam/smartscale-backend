@@ -55,6 +55,9 @@ services:
       ENV: prod
       DATABASE_URL: postgresql+asyncpg://smartscale:${POSTGRES_PASSWORD:?}@postgres:5432/smartscale
       DEVICE_KEY: ${DEVICE_KEY:?DEVICE_KEY must be set in .env}
+      # Optional second credential for non-device clients (e.g. the scraper).
+      # Empty disables the admin auth path.
+      ADMIN_KEY: ${ADMIN_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY must be set in .env}
       WHISPER_MODEL: ${WHISPER_MODEL:-whisper-1}
     healthcheck:

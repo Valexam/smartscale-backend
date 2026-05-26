@@ -46,8 +46,9 @@ Migrations run as a one-shot `migrate` container on every deploy, blocking `api`
 - `repos/` — SQLAlchemy async, all DB access.
 - `schemas/` — Pydantic request/response models.
 - `voice/` — Whisper client + fuzzy matching against the per-user pantry.
-- `auth.py` — `DeviceKeyMiddleware`. `/v1/healthz` is auth-exempt; everything else under `/v1/` requires `X-Device-Key`.
-- `config.py` — `pydantic_settings.BaseSettings`. Refuses to boot with empty `DEVICE_KEY` outside `dev`/`test`.
+- `auth.py` — `DeviceKeyMiddleware`. `/v1/healthz` is auth-exempt; everything else under `/v1/` requires `X-Device-Key`, or `X-Admin-Key` when `ADMIN_KEY` is configured.
+- `app.py` — also registers the RFC 7807 exception handlers so every error (not just auth) is `application/problem+json`.
+- `config.py` — `pydantic_settings.BaseSettings`. Refuses to boot with empty `DEVICE_KEY` outside `dev`/`test`. Optional `ADMIN_KEY` enables the admin auth path (used by the scraper).
 
 ## Wire contract
 

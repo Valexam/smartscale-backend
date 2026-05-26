@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from smartscale_api import __version__
 from smartscale_api.auth import DeviceKeyMiddleware, RedactingHandler
@@ -18,6 +23,57 @@ from smartscale_api.routes import (
     user_foods,
     voice,
 )
+from smartscale_api.schemas.errors import problem_response
+
+# Maps an HTTP status to a stable machine-readable error code for problem+json.
+# Anything not listed falls back to "HTTP_ERROR".
+_CODE_BY_STATUS: dict[int, str] = {
+    400: "BAD_REQUEST",
+    401: "UNAUTHORIZED",
+    403: "FORBIDDEN",
+    404: "NOT_FOUND",
+    405: "METHOD_NOT_ALLOWED",
+    409: "CONFLICT",
+    410: "GONE",
+    422: "VALIDATION_ERROR",
+    500: "INTERNAL_ERROR",
+    502: "UPSTREAM_ERROR",
+    503: "SERVICE_UNAVAILABLE",
+}
+
+
+async def _http_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Render route-level HTTPExceptions as RFC 7807 application/problem+json.
+
+    Without this, FastAPI returns a bare ``{"detail": ...}`` body, so only the
+    auth middleware (which builds problem+json directly) was RFC 7807. Mobile's
+    error parser expects the problem+json shape on every error.
+    """
+    assert isinstance(exc, StarletteHTTPException)
+    detail = exc.detail
+    extra: dict[str, Any] = {}
+    if isinstance(detail, dict):
+        # Routes occasionally raise a dict detail (e.g. the archived-pantry 410
+        # carries archived_at). Promote "msg" to the problem detail; keep the
+        # rest as problem+json extension members.
+        detail_str = str(detail.get("msg") or detail.get("detail") or "error")
+        extra = {k: v for k, v in detail.items() if k != "msg"}
+    else:
+        detail_str = detail if isinstance(detail, str) else str(detail)
+    code = _CODE_BY_STATUS.get(exc.status_code, "HTTP_ERROR")
+    response = problem_response(exc.status_code, code, detail_str, **extra)
+    for key, value in (exc.headers or {}).items():
+        response.headers[key] = value
+    return response
+
+
+async def _validation_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Render request-validation failures as RFC 7807 with an `errors` member."""
+    assert isinstance(exc, RequestValidationError)
+    errors = jsonable_encoder(exc.errors())
+    n = len(errors)
+    detail = f"{n} validation error{'s' if n != 1 else ''}"
+    return problem_response(422, "VALIDATION_ERROR", detail, errors=errors)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -46,6 +102,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(user_foods.router, prefix="/v1")
     app.include_router(pantry.router, prefix="/v1")
     app.include_router(voice.router, prefix="/v1")
+
+    # RFC 7807 problem+json for every error, not just auth (see handlers above).
+    app.add_exception_handler(StarletteHTTPException, _http_exception_handler)
+    app.add_exception_handler(RequestValidationError, _validation_exception_handler)
 
     app.add_middleware(DeviceKeyMiddleware, settings=settings)
 
